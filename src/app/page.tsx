@@ -17,7 +17,9 @@ import {
   RotateCcw,
   Timer,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { getStats } from '@/lib/storage';
+import { getUserProfile, getGreeting, type UserProfile } from '@/lib/user-profile';
 import Header from '@/components/layout/header';
 
 const quickLinks = [
@@ -83,8 +85,11 @@ function savePomodoroSession(minutes: number) {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [stats, setStats] = useState({ totalReviewed: 0, mastered: 0, learning: 0, totalCorrect: 0, totalIncorrect: 0 });
   const [pomodoroStats, setPomodoroStats] = useState({ totalSessions: 0, totalMinutes: 0 });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [greeting, setGreeting] = useState({ chinese: '', pinyin: '', english: '' });
 
   // Pomodoro state
   const [studyDuration, setStudyDuration] = useState(25); // minutes
@@ -95,9 +100,16 @@ export default function HomePage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    const p = getUserProfile();
+    if (!p) {
+      router.push('/onboarding');
+      return;
+    }
+    setProfile(p);
+    setGreeting(getGreeting(p));
     setStats(getStats());
     setPomodoroStats(loadPomodoroStats());
-  }, []);
+  }, [router]);
 
   const stopTimer = useCallback(() => {
     if (intervalRef.current) {
@@ -236,14 +248,16 @@ export default function HomePage() {
 
       <div className="mx-auto max-w-lg space-y-6 px-4 py-6">
         {/* Greeting & CTA */}
-        <Link href="/flashcards">
-          <section className="rounded-xl bg-card p-4 active:scale-[0.98] transition-transform">
-            <p className="font-chinese text-2xl font-bold">你好，Sean！准备好学习了吗？</p>
-            <p className="text-sm text-muted mt-1">Nǐ hǎo, Sean! Zhǔnbèi hǎo xuéxí le ma?</p>
-            <p className="text-sm mt-1">Hello, Sean! Ready to study?</p>
-            <p className="text-xs text-primary font-semibold mt-2">Start a flashcard session →</p>
-          </section>
-        </Link>
+        {greeting.chinese && (
+          <Link href="/flashcards">
+            <section className="rounded-xl bg-card p-4 active:scale-[0.98] transition-transform">
+              <p className="font-chinese text-2xl font-bold">{greeting.chinese}</p>
+              <p className="text-sm text-muted mt-1">{greeting.pinyin}</p>
+              <p className="text-sm mt-1">{greeting.english}</p>
+              <p className="text-xs text-primary font-semibold mt-2">Start a flashcard session →</p>
+            </section>
+          </Link>
+        )}
 
         <div className="h-2" />
 

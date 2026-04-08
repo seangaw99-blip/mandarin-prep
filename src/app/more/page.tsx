@@ -1,12 +1,22 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FileText, MessageSquare, Moon, Sun, Info, BookText } from 'lucide-react';
+import { FileText, MessageSquare, Moon, Sun, Info, BookText, UserCog } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { useTheme } from '@/components/theme-provider';
+import { clearUserProfile } from '@/lib/user-profile';
 
 export default function MorePage() {
   const { theme, toggleTheme } = useTheme();
+  const router = useRouter();
+
+  const handleResetProfile = () => {
+    if (confirm('This will reset your profile and restart the onboarding. Continue?')) {
+      clearUserProfile();
+      router.push('/onboarding');
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -59,13 +69,24 @@ export default function MorePage() {
           </div>
         </button>
 
+        <button
+          onClick={handleResetProfile}
+          className="flex w-full items-center gap-4 rounded-xl bg-card p-4"
+        >
+          <UserCog className="h-5 w-5 text-orange-500" />
+          <div className="text-left">
+            <h3 className="font-semibold">Reset Profile</h3>
+            <p className="text-sm text-muted">Redo onboarding questions</p>
+          </div>
+        </button>
+
         <div className="mt-6 rounded-xl bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <Info className="h-4 w-4 text-muted" />
             <h3 className="text-sm font-semibold text-muted">About</h3>
           </div>
           <p className="text-xs text-muted">
-            Built for Sean&apos;s China business trip (Apr 14-27, 2026).
+            Mandarin Prep — Learn Chinese for your business trip.
             Content based on 标准汉语会话360句 lessons 1-8 and custom business vocabulary.
           </p>
           <p className="text-xs text-muted mt-2">

@@ -5,6 +5,7 @@ import { Send, Trash2, Settings, Bot, Mic, MicOff } from 'lucide-react';
 import Header from '@/components/layout/header';
 import SpeakerButton from '@/components/ui/speaker-button';
 import { listenForChinese, type RecognitionController } from '@/lib/speech-recognition';
+import { getUserProfile } from '@/lib/user-profile';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -145,6 +146,19 @@ function parseResponse(text: string): ParsedResponse {
   };
 }
 
+function buildTopics(userName: string, _occupation: string, industry: string): Topic[] {
+  return TOPICS.map((t) => ({
+    ...t,
+    systemPrompt: t.systemPrompt
+      .replace(/Sean/g, userName)
+      .replace(/a packaging company called IPLMI/g, `a ${industry} company`)
+      .replace(/IPLMI Packaging Company/g, `a ${industry} company`)
+      .replace(/packaging\/box converting factory/g, `${industry} factory`)
+      .replace(/packaging materials supplier/g, `${industry} supplier`)
+      .replace(/corrugated boxes/g, `${industry} products`),
+  }));
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -154,6 +168,7 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
+  const [topics, setTopics] = useState<Topic[]>(TOPICS);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const micControllerRef = useRef<RecognitionController | null>(null);
 
@@ -165,6 +180,10 @@ export default function ChatPage() {
       try {
         setMessages(JSON.parse(history));
       } catch {}
+    }
+    const profile = getUserProfile();
+    if (profile) {
+      setTopics(buildTopics(profile.name, profile.occupation, profile.industry));
     }
   }, []);
 
@@ -206,7 +225,7 @@ export default function ChatPage() {
           body: JSON.stringify({
             model: 'llama-3.3-70b-versatile',
             messages: [
-              { role: 'system', content: activeTopic?.systemPrompt || TOPICS[0].systemPrompt },
+              { role: 'system', content: activeTopic?.systemPrompt || topics[0].systemPrompt },
               ...newMessages.map((m) => ({ role: m.role, content: m.content })),
             ],
             temperature: 0.7,
@@ -371,7 +390,7 @@ export default function ChatPage() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {TOPICS.map((topic) => (
+                {topics.map((topic) => (
                   <button
                     key={topic.id}
                     onClick={() => selectTopic(topic)}
