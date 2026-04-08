@@ -20,7 +20,7 @@ interface ParsedResponse {
   raw: string;
 }
 
-const STORAGE_KEY = 'mandarin-chat-api-key';
+const STORAGE_KEY = 'mandarin-chat-groq-key';
 const CHAT_HISTORY_KEY = 'mandarin-chat-history';
 
 const BASE_RULES = `Rules:
@@ -214,23 +214,22 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const systemPrompt = activeTopic?.systemPrompt || topics[0].systemPrompt;
-      const contents = newMessages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        }));
-
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+        'https://api.groq.com/openai/v1/chat/completions',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemPrompt }] },
-            contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 500 },
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: activeTopic?.systemPrompt || topics[0].systemPrompt },
+              ...newMessages.map((m) => ({ role: m.role, content: m.content })),
+            ],
+            temperature: 0.7,
+            max_tokens: 500,
           }),
         }
       );
@@ -246,7 +245,7 @@ export default function ChatPage() {
       }
 
       const assistantContent =
-        data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not respond.';
+        data.choices?.[0]?.message?.content || 'Sorry, I could not respond.';
 
       setMessages([
         ...newMessages,
@@ -257,7 +256,7 @@ export default function ChatPage() {
         ...newMessages,
         {
           role: 'assistant',
-          content: `Error: ${error instanceof Error ? error.message : 'Could not connect to Gemini API. Check your API key.'}`,
+          content: `Error: ${error instanceof Error ? error.message : 'Could not connect to Groq API. Check your API key.'}`,
         },
       ]);
     } finally {
@@ -318,17 +317,17 @@ export default function ChatPage() {
           <div className="rounded-xl bg-card p-6">
             <h2 className="mb-2 text-xl font-bold">Set Up AI Chat</h2>
             <p className="mb-4 text-sm text-muted">
-              This feature uses Google Gemini&apos;s free API to power a Mandarin conversation partner.
-              Get a free API key from Google AI Studio.
+              This feature uses Groq&apos;s free API to power a Mandarin conversation partner.
+              Get a free API key from console.groq.com.
             </p>
             <ol className="mb-4 list-decimal space-y-2 pl-5 text-sm text-muted">
-              <li>Go to aistudio.google.com and sign in (free)</li>
-              <li>Click &quot;Get API key&quot; → Create API key</li>
+              <li>Go to console.groq.com and sign up (free)</li>
+              <li>Create an API key</li>
               <li>Paste it below</li>
             </ol>
             <input
               type="password"
-              placeholder="Enter your Gemini API key"
+              placeholder="Enter your Groq API key"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               className="mb-3 w-full rounded-lg bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
