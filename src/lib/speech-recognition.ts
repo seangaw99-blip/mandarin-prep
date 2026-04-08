@@ -10,22 +10,24 @@ export function listenForChinese(): Promise<RecognitionResult> {
       return;
     }
 
-    const SpeechRecognition =
-      (window as unknown as Record<string, unknown>).SpeechRecognition ||
-      (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionAPI) {
       reject(new Error('Speech recognition not supported in this browser. Try Chrome.'));
       return;
     }
 
-    const recognition = new (SpeechRecognition as new () => SpeechRecognition)();
+    const recognition = new SpeechRecognitionAPI();
     recognition.lang = 'zh-CN';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.continuous = false;
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
       const result = event.results[0][0];
       resolve({
         transcript: result.transcript,
@@ -33,7 +35,8 @@ export function listenForChinese(): Promise<RecognitionResult> {
       });
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
       if (event.error === 'no-speech') {
         reject(new Error('No speech detected. Try again.'));
       } else if (event.error === 'not-allowed') {
