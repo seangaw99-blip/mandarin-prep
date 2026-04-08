@@ -2,45 +2,57 @@ export function speakChinese(text: string, rate: number = 0.8) {
   if (typeof window === 'undefined') return;
 
   const synth = window.speechSynthesis;
-  if (!synth) return;
+  if (!synth) {
+    console.warn('Speech synthesis not available');
+    return;
+  }
 
   // Cancel any ongoing speech
   synth.cancel();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'zh-CN';
-  utterance.rate = rate;
-  utterance.pitch = 1;
+  const speak = () => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = rate;
+    utterance.pitch = 1;
 
-  // Try to find a Chinese voice
-  const voices = synth.getVoices();
-  const chineseVoice = voices.find(
-    (v) => v.lang === 'zh-CN' || v.lang === 'zh-TW' || v.lang.startsWith('zh')
-  );
-  if (chineseVoice) {
-    utterance.voice = chineseVoice;
-  }
-
-  synth.speak(utterance);
-
-  // Chrome bug: if getVoices() was empty (not loaded yet), retry after voiceschanged
-  if (voices.length === 0) {
-    synth.addEventListener(
-      'voiceschanged',
-      () => {
-        const retryVoices = synth.getVoices();
-        const retryVoice = retryVoices.find(
-          (v) => v.lang === 'zh-CN' || v.lang === 'zh-TW' || v.lang.startsWith('zh')
-        );
-        const retryUtterance = new SpeechSynthesisUtterance(text);
-        retryUtterance.lang = 'zh-CN';
-        retryUtterance.rate = rate;
-        retryUtterance.pitch = 1;
-        if (retryVoice) retryUtterance.voice = retryVoice;
-        synth.speak(retryUtterance);
-      },
-      { once: true }
+    // Try to find a Chinese voice
+    const voices = synth.getVoices();
+    const chineseVoice = voices.find(
+      (v) =>
+        v.lang === 'zh-CN' ||
+        v.lang === 'zh-TW' ||
+        v.lang === 'zh-HK' ||
+        v.lang.startsWith('zh')
     );
+
+    if (chineseVoice) {
+      utterance.voice = chineseVoice;
+    }
+
+    // Debug logging
+    console.log('Speaking:', text, '| Voice:', chineseVoice?.name || 'default', '| Voices available:', voices.length);
+
+    utterance.onerror = (e) => {
+      console.error('Speech error:', e.error);
+    };
+
+    synth.speak(utterance);
+  };
+
+  // If voices are loaded, speak immediately
+  const voices = synth.getVoices();
+  if (voices.length > 0) {
+    speak();
+  } else {
+    // Wait for voices to load, then speak
+    synth.addEventListener('voiceschanged', speak, { once: true });
+    // Also try after a short delay as fallback
+    setTimeout(() => {
+      if (synth.getVoices().length > 0) {
+        speak();
+      }
+    }, 500);
   }
 }
 
