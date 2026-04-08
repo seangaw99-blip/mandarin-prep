@@ -74,6 +74,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,9 +101,10 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem(STORAGE_KEY, key);
+  const saveApiKey = () => {
+    if (!apiKeyInput.trim()) return;
+    setApiKey(apiKeyInput.trim());
+    localStorage.setItem(STORAGE_KEY, apiKeyInput.trim());
     setShowSettings(false);
   };
 
@@ -207,13 +209,13 @@ export default function ChatPage() {
             <input
               type="password"
               placeholder="Enter your Groq API key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
               className="mb-3 w-full rounded-lg bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
-              onClick={() => saveApiKey(apiKey)}
-              disabled={!apiKey.trim()}
+              onClick={saveApiKey}
+              disabled={!apiKeyInput.trim()}
               className="w-full rounded-lg bg-primary py-3 font-semibold text-white disabled:opacity-50"
             >
               Save & Start Chatting
