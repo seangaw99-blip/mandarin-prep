@@ -40,21 +40,32 @@ export default function FlashcardsPage() {
 
   const currentCard = deck[currentIndex];
 
+  const [isRevealing, setIsRevealing] = useState(false);
+
   const handleNext = useCallback(
     (wasCorrect: boolean) => {
-      if (!currentCard) return;
+      if (!currentCard || isRevealing) return;
       saveCardProgress(currentCard.id, wasCorrect);
       if (wasCorrect) setCorrect((c) => c + 1);
       setReviewed((r) => r + 1);
-      setIsFlipped(false);
 
-      if (currentIndex + 1 >= deck.length) {
-        setShowComplete(true);
-      } else {
-        setTimeout(() => setCurrentIndex((i) => i + 1), 200);
-      }
+      // Flip to reveal Chinese + pinyin and play audio
+      setIsFlipped(true);
+      setIsRevealing(true);
+      speakChinese(currentCard.chinese);
+
+      // Wait 2 seconds showing the answer, then move to next
+      setTimeout(() => {
+        setIsFlipped(false);
+        setIsRevealing(false);
+        if (currentIndex + 1 >= deck.length) {
+          setShowComplete(true);
+        } else {
+          setCurrentIndex((i) => i + 1);
+        }
+      }, 2000);
     },
-    [currentCard, currentIndex, deck.length]
+    [currentCard, currentIndex, deck.length, isRevealing]
   );
 
   const resetDeck = () => {
@@ -161,10 +172,14 @@ export default function FlashcardsPage() {
               }}
             />
             <div className="mt-6">
-              <SwipeControls
-                onCorrect={() => handleNext(true)}
-                onIncorrect={() => handleNext(false)}
-              />
+              {isRevealing ? (
+                <p className="text-center text-sm text-muted animate-pulse">Listen and review...</p>
+              ) : (
+                <SwipeControls
+                  onCorrect={() => handleNext(true)}
+                  onIncorrect={() => handleNext(false)}
+                />
+              )}
             </div>
           </div>
         )}
