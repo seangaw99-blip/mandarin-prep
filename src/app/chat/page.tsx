@@ -236,6 +236,15 @@ export default function ChatPage() {
       );
 
       const data = await response.json();
+
+      if (data.error) {
+        setMessages([
+          ...newMessages,
+          { role: 'assistant', content: `API Error: ${data.error.message}` },
+        ]);
+        return;
+      }
+
       const assistantContent =
         data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not respond.';
 
@@ -248,7 +257,7 @@ export default function ChatPage() {
         ...newMessages,
         {
           role: 'assistant',
-          content: 'Error connecting to Gemini API. Check your API key and internet connection.',
+          content: `Error: ${error instanceof Error ? error.message : 'Could not connect to Gemini API. Check your API key.'}`,
         },
       ]);
     } finally {
