@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   BookOpen,
@@ -9,12 +9,14 @@ import {
   FileText,
   MessageSquare,
   MessageCircle,
-  Plane,
   Target,
   TrendingUp,
   ArrowRight,
+  Play,
+  Pause,
+  RotateCcw,
+  Timer,
 } from 'lucide-react';
-import { getDaysUntilTrip, getTripDay } from '@/lib/utils';
 import { getStats } from '@/lib/storage';
 import Header from '@/components/layout/header';
 
@@ -33,118 +35,214 @@ interface StudyTask {
   icon: string;
 }
 
-const studyFocus: Record<number, { title: string; tasks: StudyTask[] }> = {
-  6: {
-    title: 'Foundation Refresh',
-    tasks: [
-      { label: 'Flashcards: Greetings', href: '/flashcards?cat=greetings', icon: '👋' },
-      { label: 'Flashcards: Numbers & Money', href: '/flashcards?cat=numbers', icon: '🔢' },
-      { label: 'Practice: Hotel Check-in', href: '/practice/dlg-1', icon: '🏨' },
-    ],
-  },
-  5: {
-    title: 'Travel Survival',
-    tasks: [
-      { label: 'Phrases: Airport', href: '/phrases/airport', icon: '✈️' },
-      { label: 'Phrases: Taxi & Transport', href: '/phrases/taxi', icon: '🚕' },
-      { label: 'Cheat Sheet: Taxi Card', href: '/cheatsheets/cs-taxi', icon: '📋' },
-      { label: 'Practice: Taking a Taxi', href: '/practice/dlg-3', icon: '💬' },
-    ],
-  },
-  4: {
-    title: 'Food & Hotel',
-    tasks: [
-      { label: 'Phrases: Restaurant', href: '/phrases/restaurant', icon: '🍜' },
-      { label: 'Phrases: Hotel', href: '/phrases/hotel', icon: '🏨' },
-      { label: 'Flashcards: Food & Drinks', href: '/flashcards?cat=food', icon: '🥢' },
-      { label: 'Practice: Ordering Food', href: '/practice/dlg-2', icon: '💬' },
-    ],
-  },
-  3: {
-    title: 'Business Prep',
-    tasks: [
-      { label: 'Business Vocabulary', href: '/business', icon: '📦' },
-      { label: 'Phrases: Factory Visit', href: '/phrases/factory', icon: '🏭' },
-      { label: 'Phrases: Negotiation', href: '/phrases/negotiation', icon: '💰' },
-      { label: 'Practice: Price Negotiation', href: '/practice/dlg-5', icon: '💬' },
-    ],
-  },
-  2: {
-    title: 'Full Review',
-    tasks: [
-      { label: 'Flashcards: All Categories', href: '/flashcards', icon: '🃏' },
-      { label: 'All Cheat Sheets', href: '/cheatsheets', icon: '📋' },
-      { label: 'Practice: Factory Tour', href: '/practice/dlg-4', icon: '🏭' },
-      { label: 'Flashcards: Business', href: '/flashcards?cat=business', icon: '💼' },
-    ],
-  },
-  1: {
-    title: 'Final Drill',
-    tasks: [
-      { label: 'Flashcards: Speed Run', href: '/flashcards', icon: '⚡' },
-      { label: 'Cheat Sheet: Emergency', href: '/cheatsheets/cs-emergency', icon: '🚨' },
-      { label: 'Cheat Sheet: Factory Visit', href: '/cheatsheets/cs-factory', icon: '🏭' },
-      { label: 'AI Chat: Practice Conversation', href: '/chat', icon: '🤖' },
-    ],
-  },
-  0: {
-    title: "You're in China!",
-    tasks: [
-      { label: 'Cheat Sheet: Restaurant', href: '/cheatsheets/cs-restaurant', icon: '🍜' },
-      { label: 'Cheat Sheet: Taxi', href: '/cheatsheets/cs-taxi', icon: '🚕' },
-      { label: 'Cheat Sheet: Emergency', href: '/cheatsheets/cs-emergency', icon: '🚨' },
-      { label: 'Phrases: Emergency', href: '/phrases/emergency', icon: '🏥' },
-    ],
-  },
-};
+const studyTasks: StudyTask[] = [
+  { label: 'Flashcards: Greetings', href: '/flashcards?cat=greetings', icon: '👋' },
+  { label: 'Flashcards: Numbers & Money', href: '/flashcards?cat=numbers', icon: '🔢' },
+  { label: 'Phrases: Airport', href: '/phrases/airport', icon: '✈️' },
+  { label: 'Phrases: Taxi & Transport', href: '/phrases/taxi', icon: '🚕' },
+  { label: 'Phrases: Restaurant', href: '/phrases/restaurant', icon: '🍜' },
+  { label: 'Phrases: Hotel', href: '/phrases/hotel', icon: '🏨' },
+  { label: 'Business Vocabulary', href: '/business', icon: '📦' },
+  { label: 'Phrases: Factory Visit', href: '/phrases/factory', icon: '🏭' },
+  { label: 'Phrases: Negotiation', href: '/phrases/negotiation', icon: '💰' },
+  { label: 'Practice: Hotel Check-in', href: '/practice/dlg-1', icon: '🏨' },
+  { label: 'Practice: Ordering Food', href: '/practice/dlg-2', icon: '🍜' },
+  { label: 'Practice: Taking a Taxi', href: '/practice/dlg-3', icon: '🚕' },
+  { label: 'Practice: Factory Tour', href: '/practice/dlg-4', icon: '🏭' },
+  { label: 'Practice: Price Negotiation', href: '/practice/dlg-5', icon: '💰' },
+  { label: 'Cheat Sheet: Restaurant', href: '/cheatsheets/cs-restaurant', icon: '📋' },
+  { label: 'Cheat Sheet: Taxi', href: '/cheatsheets/cs-taxi', icon: '📋' },
+  { label: 'AI Chat Practice', href: '/chat', icon: '🤖' },
+];
+
+const POMODORO_KEY = 'mandarin-pomodoro';
+
+type PomodoroMode = 'study' | 'break';
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function loadPomodoroStats(): { totalSessions: number; totalMinutes: number } {
+  if (typeof window === 'undefined') return { totalSessions: 0, totalMinutes: 0 };
+  try {
+    const data = localStorage.getItem(POMODORO_KEY);
+    return data ? JSON.parse(data) : { totalSessions: 0, totalMinutes: 0 };
+  } catch {
+    return { totalSessions: 0, totalMinutes: 0 };
+  }
+}
+
+function savePomodoroSession(minutes: number) {
+  const stats = loadPomodoroStats();
+  stats.totalSessions++;
+  stats.totalMinutes += minutes;
+  localStorage.setItem(POMODORO_KEY, JSON.stringify(stats));
+}
 
 export default function HomePage() {
-  const [daysLeft, setDaysLeft] = useState(6);
-  const [tripDay, setTripDay] = useState(0);
   const [stats, setStats] = useState({ totalReviewed: 0, mastered: 0, learning: 0, totalCorrect: 0, totalIncorrect: 0 });
+  const [pomodoroStats, setPomodoroStats] = useState({ totalSessions: 0, totalMinutes: 0 });
+
+  // Pomodoro state
+  const [studyDuration, setStudyDuration] = useState(25); // minutes
+  const [breakDuration] = useState(5);
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [isRunning, setIsRunning] = useState(false);
+  const [mode, setMode] = useState<PomodoroMode>('study');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    setDaysLeft(getDaysUntilTrip());
-    setTripDay(getTripDay());
     setStats(getStats());
+    setPomodoroStats(loadPomodoroStats());
   }, []);
 
-  const isInChina = tripDay > 0;
-  const todayFocus = studyFocus[Math.min(daysLeft, 6)] || studyFocus[0];
+  const stopTimer = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsRunning(false);
+  }, []);
+
+  const startTimer = useCallback(() => {
+    setIsRunning(true);
+    intervalRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          stopTimer();
+          // Timer completed
+          if (mode === 'study') {
+            savePomodoroSession(studyDuration);
+            setPomodoroStats(loadPomodoroStats());
+            // Switch to break
+            setMode('break');
+            setTimeLeft(breakDuration * 60);
+          } else {
+            // Break over, back to study
+            setMode('study');
+            setTimeLeft(studyDuration * 60);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [mode, studyDuration, breakDuration, stopTimer]);
+
+  const resetTimer = () => {
+    stopTimer();
+    setMode('study');
+    setTimeLeft(studyDuration * 60);
+  };
+
+  const toggleTimer = () => {
+    if (isRunning) {
+      stopTimer();
+    } else {
+      startTimer();
+    }
+  };
+
+  const changeDuration = (mins: number) => {
+    setStudyDuration(mins);
+    if (!isRunning && mode === 'study') {
+      setTimeLeft(mins * 60);
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const progress = mode === 'study'
+    ? 1 - timeLeft / (studyDuration * 60)
+    : 1 - timeLeft / (breakDuration * 60);
 
   return (
     <div className="min-h-screen">
       <Header title="Mandarin Prep" />
 
-      {/* Countdown Hero */}
-      <div className="bg-gradient-to-br from-primary to-red-700 px-4 py-8 text-white">
+      {/* Pomodoro Timer */}
+      <div className={`px-4 py-6 ${mode === 'study' ? 'bg-gradient-to-br from-primary to-red-700' : 'bg-gradient-to-br from-green-600 to-emerald-700'} text-white`}>
         <div className="mx-auto max-w-lg text-center">
-          <Plane className="mx-auto mb-2 h-8 w-8 opacity-80" />
-          {isInChina ? (
-            <>
-              <p className="text-sm uppercase tracking-wider opacity-80">Day {tripDay} in China</p>
-              <p className="font-chinese mt-1 text-3xl font-bold">加油！你可以的！</p>
-              <p className="mt-1 text-sm opacity-80">Keep going! You can do it!</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm uppercase tracking-wider opacity-80">Days until China</p>
-              <p className="mt-1 text-7xl font-bold">{daysLeft}</p>
-              <p className="mt-1 text-sm opacity-80">April 14 – 27, 2026</p>
-            </>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Timer className="h-5 w-5 opacity-80" />
+            <p className="text-sm uppercase tracking-wider opacity-80">
+              {mode === 'study' ? 'Study Session' : 'Break Time'}
+            </p>
+          </div>
+
+          {/* Timer display */}
+          <p className="text-6xl font-bold font-mono tracking-wider my-3">
+            {formatTime(timeLeft)}
+          </p>
+
+          {/* Progress bar */}
+          <div className="w-full max-w-xs mx-auto h-1.5 bg-white/20 rounded-full mb-4">
+            <div
+              className="h-full bg-white/80 rounded-full transition-all duration-1000"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <button
+              onClick={resetTimer}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              onClick={toggleTimer}
+              className="w-14 h-14 flex items-center justify-center rounded-full bg-white text-red-600 hover:bg-white/90 transition-colors"
+            >
+              {isRunning ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 ml-0.5" />}
+            </button>
+            <div className="w-10 h-10" /> {/* Spacer for alignment */}
+          </div>
+
+          {/* Duration presets */}
+          {!isRunning && mode === 'study' && (
+            <div className="flex items-center justify-center gap-2">
+              {[15, 25, 45].map((mins) => (
+                <button
+                  key={mins}
+                  onClick={() => changeDuration(mins)}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    studyDuration === mins ? 'bg-white text-red-600 font-semibold' : 'bg-white/20'
+                  }`}
+                >
+                  {mins}m
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Session stats */}
+          {pomodoroStats.totalSessions > 0 && (
+            <p className="text-xs opacity-60 mt-2">
+              {pomodoroStats.totalSessions} sessions completed &middot; {pomodoroStats.totalMinutes} min studied
+            </p>
           )}
         </div>
       </div>
 
       <div className="mx-auto max-w-lg space-y-6 px-4 py-6">
-        {/* Today's Focus - now with clickable links */}
+        {/* Suggested Study Tasks */}
         <section>
           <div className="mb-3 flex items-center gap-2">
             <Target className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Today&apos;s Focus: {todayFocus.title}</h2>
+            <h2 className="text-lg font-semibold">Study Tasks</h2>
           </div>
           <div className="space-y-2">
-            {todayFocus.tasks.map((task, i) => (
+            {studyTasks.slice(0, 5).map((task, i) => (
               <Link key={i} href={task.href}>
                 <div className="flex items-center gap-3 rounded-lg bg-card p-3 mb-2 active:scale-[0.98] transition-transform">
                   <span className="text-xl shrink-0">{task.icon}</span>

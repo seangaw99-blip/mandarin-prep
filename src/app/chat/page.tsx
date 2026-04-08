@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Settings, Bot, User } from 'lucide-react';
+import { Send, Trash2, Settings, Bot, User, Mic, MicOff } from 'lucide-react';
 import Header from '@/components/layout/header';
 import SpeakerButton from '@/components/ui/speaker-button';
+import { listenForChinese, type RecognitionController } from '@/lib/speech-recognition';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -74,7 +75,9 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const micControllerRef = useRef<RecognitionController | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -157,6 +160,32 @@ export default function ChatPage() {
   const clearChat = () => {
     setMessages([]);
     localStorage.removeItem(CHAT_HISTORY_KEY);
+  };
+
+  const handleMicToggle = async () => {
+    if (isRecording && micControllerRef.current) {
+      // Stop recording
+      micControllerRef.current.stop();
+      micControllerRef.current = null;
+      setIsRecording(false);
+      return;
+    }
+
+    // Start recording
+    setIsRecording(true);
+    try {
+      const controller = listenForChinese();
+      micControllerRef.current = controller;
+      const result = await controller.promise;
+      micControllerRef.current = null;
+      setIsRecording(false);
+      if (result.transcript.trim()) {
+        sendMessage(result.transcript);
+      }
+    } catch {
+      micControllerRef.current = null;
+      setIsRecording(false);
+    }
   };
 
   if (!apiKey || showSettings) {
@@ -325,13 +354,29 @@ export default function ChatPage() {
 
       {/* Input */}
       <div className="border-t border-border bg-background px-4 py-3 safe-bottom">
+        {isRecording && (
+          <div className="mx-auto max-w-lg mb-2 text-center">
+            <p className="text-xs text-red-400 animate-pulse">Recording... tap mic to stop</p>
+          </div>
+        )}
         <div className="mx-auto flex max-w-lg gap-2">
+          <button
+            onClick={handleMicToggle}
+            className={`rounded-xl px-3 py-3 transition-colors ${
+              isRecording
+                ? 'bg-red-500 text-white animate-pulse'
+                : 'bg-card text-muted hover:text-primary'
+            }`}
+            aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+          >
+            {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-            placeholder="Type in Chinese or English..."
+            placeholder="Type or tap mic to speak..."
             className="font-chinese flex-1 rounded-xl bg-card px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
