@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Settings, Bot, User, Mic, MicOff } from 'lucide-react';
+import { Send, Trash2, Settings, Bot, Mic, MicOff } from 'lucide-react';
 import Header from '@/components/layout/header';
 import SpeakerButton from '@/components/ui/speaker-button';
 import { listenForChinese, type RecognitionController } from '@/lib/speech-recognition';
@@ -23,19 +23,22 @@ const STORAGE_KEY = 'mandarin-chat-api-key';
 const CHAT_HISTORY_KEY = 'mandarin-chat-history';
 
 const BASE_RULES = `Rules:
-1. Always respond in this format for each message:
-   Chinese: [your response in Chinese characters]
-   Pinyin: [pinyin with tone marks]
-   English: [English translation]
+1. ALWAYS respond in EXACTLY this format (every single response, no exceptions):
+   Chinese: [your response in Chinese characters only]
+   Pinyin: [pinyin with tone marks for the Chinese above]
+   English: [full English translation of the Chinese above]
 
-2. If the user writes in Chinese and makes mistakes, add:
-   Correction: [explain the error and correct it kindly]
+2. If the user makes a mistake in their Chinese, add this AFTER the above format:
+   Correction: [Write in ENGLISH explaining what they said wrong, what the correct Chinese is, and the pinyin. Example: "You said 我去吃 but it should be 我想吃 (wǒ xiǎng chī) meaning 'I want to eat'."]
 
-3. Keep responses short (1-3 sentences). Use simple vocabulary appropriate for HSK 1-2.
-4. If the user writes in English, respond in Chinese and encourage them to try Chinese.
-5. Be encouraging and patient.
-6. Sometimes ask simple questions to keep the conversation going.
-7. Stay in character for the chosen scenario.`;
+3. Keep responses short (1-2 sentences). Use simple HSK 1-2 vocabulary.
+4. If the user writes in English, still respond using the format above. Encourage them to try Chinese.
+5. The English line must ALWAYS be a complete English translation, never Chinese characters.
+6. The Correction line must ALWAYS be written in English with pinyin, never just Chinese.
+7. Be encouraging and patient. Ask simple follow-up questions.
+8. Stay in character for the chosen scenario.
+
+CRITICAL: The English line and Correction line must be in ENGLISH. The user is a beginner learning Chinese and needs English explanations.`;
 
 interface Topic {
   id: string;
@@ -114,16 +117,30 @@ const TOPICS: Topic[] = [
 ];
 
 function parseResponse(text: string): ParsedResponse {
-  const chineseMatch = text.match(/Chinese:\s*(.+)/i);
-  const pinyinMatch = text.match(/Pinyin:\s*(.+)/i);
-  const englishMatch = text.match(/English:\s*(.+)/i);
-  const correctionMatch = text.match(/Correction:\s*(.+)/i);
+  const lines = text.split('\n');
+  let chinese = '';
+  let pinyin = '';
+  let english = '';
+  let correction = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.match(/^Chinese:\s*/i)) {
+      chinese = trimmed.replace(/^Chinese:\s*/i, '');
+    } else if (trimmed.match(/^Pinyin:\s*/i)) {
+      pinyin = trimmed.replace(/^Pinyin:\s*/i, '');
+    } else if (trimmed.match(/^English:\s*/i)) {
+      english = trimmed.replace(/^English:\s*/i, '');
+    } else if (trimmed.match(/^Correction:\s*/i)) {
+      correction = trimmed.replace(/^Correction:\s*/i, '');
+    }
+  }
 
   return {
-    chinese: chineseMatch?.[1]?.trim(),
-    pinyin: pinyinMatch?.[1]?.trim(),
-    english: englishMatch?.[1]?.trim(),
-    correction: correctionMatch?.[1]?.trim(),
+    chinese: chinese || undefined,
+    pinyin: pinyin || undefined,
+    english: english || undefined,
+    correction: correction || undefined,
     raw: text,
   };
 }
