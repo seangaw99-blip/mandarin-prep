@@ -94,7 +94,7 @@ export default function FinalScore({
       </div>
 
       {/* Actions - fixed at bottom */}
-      <div className="px-4 py-3 border-t border-border bg-background">
+      <div className="px-4 py-3 pb-16 border-t border-border bg-background">
         <div className="mx-auto max-w-lg flex gap-3">
           <button
             onClick={onRetry}

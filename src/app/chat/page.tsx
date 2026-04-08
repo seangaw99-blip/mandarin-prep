@@ -214,29 +214,30 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
+      const systemPrompt = activeTopic?.systemPrompt || topics[0].systemPrompt;
+      const contents = newMessages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        }));
+
       const response = await fetch(
-        'https://api.groq.com/openai/v1/chat/completions',
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              { role: 'system', content: activeTopic?.systemPrompt || topics[0].systemPrompt },
-              ...newMessages.map((m) => ({ role: m.role, content: m.content })),
-            ],
-            temperature: 0.7,
-            max_tokens: 500,
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 500 },
           }),
         }
       );
 
       const data = await response.json();
       const assistantContent =
-        data.choices?.[0]?.message?.content || 'Sorry, I could not respond.';
+        data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not respond.';
 
       setMessages([
         ...newMessages,
@@ -247,7 +248,7 @@ export default function ChatPage() {
         ...newMessages,
         {
           role: 'assistant',
-          content: 'Error connecting to Groq API. Check your API key and internet connection.',
+          content: 'Error connecting to Gemini API. Check your API key and internet connection.',
         },
       ]);
     } finally {
@@ -308,17 +309,17 @@ export default function ChatPage() {
           <div className="rounded-xl bg-card p-6">
             <h2 className="mb-2 text-xl font-bold">Set Up AI Chat</h2>
             <p className="mb-4 text-sm text-muted">
-              This feature uses Groq&apos;s free API to power a Mandarin conversation partner.
-              Get a free API key from groq.com.
+              This feature uses Google Gemini&apos;s free API to power a Mandarin conversation partner.
+              Get a free API key from Google AI Studio.
             </p>
             <ol className="mb-4 list-decimal space-y-2 pl-5 text-sm text-muted">
-              <li>Go to console.groq.com and sign up (free)</li>
-              <li>Create an API key</li>
+              <li>Go to aistudio.google.com and sign in (free)</li>
+              <li>Click &quot;Get API key&quot; → Create API key</li>
               <li>Paste it below</li>
             </ol>
             <input
               type="password"
-              placeholder="Enter your Groq API key"
+              placeholder="Enter your Gemini API key"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               className="mb-3 w-full rounded-lg bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
