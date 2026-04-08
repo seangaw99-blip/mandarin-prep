@@ -245,6 +245,8 @@ export default function HomePage() {
           </section>
         </Link>
 
+        <div className="h-2" />
+
         {/* Suggested Study Tasks */}
         <section>
           <div className="mb-3 flex items-center gap-2">
