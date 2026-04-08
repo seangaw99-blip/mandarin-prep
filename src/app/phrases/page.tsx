@@ -16,7 +16,7 @@ export default function PhrasesPage() {
           {scenarios.map((scenario, i) => (
             <Link key={scenario.id} href={`/phrases/${scenario.id}`}>
               <div
-                className="flex flex-col items-center gap-2 rounded-xl bg-card p-5 text-center transition-colors hover:bg-card/80 active:scale-[0.97] transition-transform animate-fadeIn"
+                className="flex flex-col items-center justify-center gap-2 rounded-xl bg-card p-5 text-center transition-colors hover:bg-card/80 active:scale-[0.97] transition-transform animate-fadeIn h-32"
                 style={{ animationDelay: `${i * 0.05}s` }}
               >
                 <span className="text-3xl">{scenario.icon}</span>
