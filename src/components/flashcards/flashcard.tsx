@@ -29,17 +29,19 @@ export default function Flashcard({
       <div
         className={`relative w-full min-h-[300px] preserve-3d card-flip ${isFlipped ? 'flipped' : ''}`}
       >
-        {/* Front */}
+        {/* Front - English */}
         <div className="absolute inset-0 backface-hidden bg-card rounded-2xl flex items-center justify-center p-6">
-          <p className="text-5xl font-chinese font-bold text-card-foreground text-center leading-relaxed">
-            {chinese}
+          <p className="text-3xl font-bold text-card-foreground text-center leading-relaxed">
+            {english}
           </p>
         </div>
 
-        {/* Back */}
+        {/* Back - Chinese + Pinyin */}
         <div className="absolute inset-0 backface-hidden rotate-y-180 bg-card rounded-2xl flex flex-col items-center justify-center p-6 gap-3">
-          <p className="text-2xl text-muted font-chinese">{pinyin}</p>
-          <p className="text-xl text-card-foreground">{english}</p>
+          <p className="text-5xl font-chinese font-bold text-card-foreground text-center leading-relaxed">
+            {chinese}
+          </p>
+          <p className="text-xl text-muted">{pinyin}</p>
         </div>
       </div>
     </div>
