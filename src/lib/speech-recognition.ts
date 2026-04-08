@@ -10,6 +10,7 @@ export interface RecognitionController {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeRecognition: any = null;
+let resolved = false;
 
 export function listenForChinese(): RecognitionController {
   // Stop any existing recognition
@@ -17,6 +18,7 @@ export function listenForChinese(): RecognitionController {
     try { activeRecognition.stop(); } catch {}
     activeRecognition = null;
   }
+  resolved = false;
 
   let resolvePromise: (result: RecognitionResult) => void;
   let rejectPromise: (error: Error) => void;
@@ -47,55 +49,60 @@ export function listenForChinese(): RecognitionController {
   recognition.maxAlternatives = 1;
   recognition.continuous = true;
 
-  let finalTranscript = '';
-  let finalConfidence = 0;
+  // Track the full transcript by rebuilding from all results each time
+  let latestTranscript = '';
+  let latestConfidence = 0;
   let hasResult = false;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recognition.onresult = (event: any) => {
-    let interim = '';
+    // Rebuild the full transcript from ALL results every time
+    let fullTranscript = '';
+    let lastConfidence = 0;
+
     for (let i = 0; i < event.results.length; i++) {
-      const result = event.results[i];
-      if (result.isFinal) {
-        finalTranscript += result[0].transcript;
-        finalConfidence = result[0].confidence;
-        hasResult = true;
-      } else {
-        interim += result[0].transcript;
-      }
+      fullTranscript += event.results[i][0].transcript;
+      lastConfidence = event.results[i][0].confidence || 0.5;
     }
-    // If we have interim but no final yet, store it as backup
-    if (!hasResult && interim) {
-      finalTranscript = interim;
-      finalConfidence = 0.5;
-      hasResult = true;
+
+    latestTranscript = fullTranscript;
+    latestConfidence = lastConfidence;
+    hasResult = true;
+  };
+
+  const doResolve = () => {
+    if (resolved) return;
+    resolved = true;
+    activeRecognition = null;
+    if (hasResult && latestTranscript.trim()) {
+      resolvePromise!({ transcript: latestTranscript, confidence: latestConfidence });
+    } else {
+      rejectPromise!(new Error('No speech detected. Try again.'));
     }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recognition.onerror = (event: any) => {
-    activeRecognition = null;
-    if (event.error === 'no-speech') {
+    if (resolved) return;
+    if (event.error === 'aborted') {
+      doResolve();
+    } else if (event.error === 'no-speech') {
+      resolved = true;
+      activeRecognition = null;
       rejectPromise!(new Error('No speech detected. Try again.'));
     } else if (event.error === 'not-allowed') {
+      resolved = true;
+      activeRecognition = null;
       rejectPromise!(new Error('Microphone access denied. Allow microphone in browser settings.'));
-    } else if (event.error === 'aborted') {
-      // User stopped -- resolve with whatever we have
-      if (hasResult) {
-        resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
-      } else {
-        rejectPromise!(new Error('No speech detected. Try again.'));
-      }
     } else {
+      resolved = true;
+      activeRecognition = null;
       rejectPromise!(new Error(`Speech error: ${event.error}`));
     }
   };
 
   recognition.onend = () => {
-    activeRecognition = null;
-    if (hasResult) {
-      resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
-    }
+    doResolve();
   };
 
   recognition.start();
@@ -104,13 +111,6 @@ export function listenForChinese(): RecognitionController {
   const stop = () => {
     if (activeRecognition) {
       try { activeRecognition.stop(); } catch {}
-      activeRecognition = null;
-      // If we have results, resolve immediately
-      if (hasResult) {
-        resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
-      } else {
-        rejectPromise!(new Error('No speech detected. Try again.'));
-      }
     }
   };
 
