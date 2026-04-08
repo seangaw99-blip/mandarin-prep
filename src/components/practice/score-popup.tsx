@@ -36,9 +36,9 @@ export default function ScorePopup({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={onClose}>
       <div
-        className={`relative w-full max-w-sm rounded-2xl ${config.bg} ring-2 ${config.ring} bg-card p-6 text-center animate-scaleIn`}
+        className={`relative w-full max-w-sm rounded-2xl ring-2 ${config.ring} bg-background p-6 text-center animate-scaleIn`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
