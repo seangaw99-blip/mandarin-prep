@@ -8,7 +8,7 @@ import {
   Layers,
   Briefcase,
   MessageCircle,
-  MoreHorizontal,
+  BookText,
 } from 'lucide-react';
 
 const tabs = [
@@ -17,7 +17,7 @@ const tabs = [
   { href: '/flashcards', label: 'Cards', icon: Layers },
   { href: '/business', label: 'Business', icon: Briefcase },
   { href: '/chat', label: 'Chat', icon: MessageCircle },
-  { href: '/more', label: 'More', icon: MoreHorizontal },
+  { href: '/vocabulary', label: 'Vocab', icon: BookText },
 ];
 
 export default function BottomNav() {

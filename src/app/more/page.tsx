@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FileText, MessageSquare, Moon, Sun, Info } from 'lucide-react';
+import { FileText, MessageSquare, Moon, Sun, Info, BookText } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { useTheme } from '@/components/theme-provider';
 
@@ -18,6 +18,16 @@ export default function MorePage() {
             <div>
               <h3 className="font-semibold">Cheat Sheets</h3>
               <p className="text-sm text-muted">Quick-reference cards to show locals</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/vocabulary">
+          <div className="flex items-center gap-4 rounded-xl bg-card p-4 mb-3">
+            <BookText className="h-5 w-5 text-emerald-500" />
+            <div>
+              <h3 className="font-semibold">Vocabulary Reference</h3>
+              <p className="text-sm text-muted">Browse 300+ words by category</p>
             </div>
           </div>
         </Link>
