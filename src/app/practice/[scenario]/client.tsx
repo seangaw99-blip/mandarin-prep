@@ -39,6 +39,7 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
   const [scoreState, setScoreState] = useState<ScoreState | null>(null);
   const [lineScores, setLineScores] = useState<Map<number, LineScore>>(new Map());
   const [showFinalScore, setShowFinalScore] = useState(false);
+  const [allDone, setAllDone] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<RecognitionController | null>(null);
@@ -82,6 +83,7 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
     setScoreState(null);
     setLineScores(new Map());
     setShowFinalScore(false);
+    setAllDone(false);
     setError(null);
     setHighScore(getHighScore(scenarioId));
     controllerRef.current = null;
@@ -123,16 +125,18 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
       (i) => i === lineIndex || lineScores.has(i)
     ).length;
     if (updatedCompleted === yourLineCount) {
-      setTimeout(() => {
-        const allScores = [...lineScores.values(), newLineScore];
-        const avg = Math.round(
-          allScores.reduce((sum, s) => sum + s.score, 0) / allScores.length
-        );
-        const isNew = saveHighScore(scenarioId, avg);
-        setHighScore(isNew ? avg : getHighScore(scenarioId));
-        setShowFinalScore(true);
-      }, 3000);
+      setAllDone(true);
     }
+  };
+
+  const finishConversation = () => {
+    const scores = [...lineScores.values()];
+    const avg = scores.length > 0
+      ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length)
+      : 0;
+    const isNew = saveHighScore(scenarioId, avg);
+    setHighScore(isNew ? avg : getHighScore(scenarioId));
+    setShowFinalScore(true);
   };
 
   const handleMicToggle = async (lineIndex: number) => {
@@ -293,14 +297,15 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
                       )}
                       <button
                         onClick={() => handleMicToggle(i)}
+                        disabled={hasScore && !isListening}
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
                           isListening
                             ? 'bg-red-500 text-white animate-pulse'
                             : hasScore
-                            ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                            ? 'bg-green-500/20 text-green-400 opacity-60 cursor-not-allowed'
                             : 'bg-card text-muted hover:text-primary hover:bg-card/80'
                         }`}
-                        aria-label={isListening ? 'Stop recording' : 'Start recording'}
+                        aria-label={hasScore ? 'Already attempted' : isListening ? 'Stop recording' : 'Start recording'}
                       >
                         {isListening ? <MicOff size={18} /> : <Mic size={18} />}
                       </button>
@@ -311,6 +316,30 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
             );
           })}
         </div>
+
+        {/* Finish Conversation button */}
+        {allDone && !showFinalScore && (
+          <div className="mt-6 mb-4">
+            <button
+              onClick={finishConversation}
+              className="w-full rounded-xl bg-primary py-4 font-semibold text-white text-lg active:scale-[0.98] transition-transform"
+            >
+              Finish Conversation
+            </button>
+          </div>
+        )}
+
+        {/* Show finish button even if not all lines done, but at least one is */}
+        {!allDone && completedCount > 0 && !showFinalScore && (
+          <div className="mt-6 mb-4">
+            <button
+              onClick={finishConversation}
+              className="w-full rounded-xl bg-card py-3 font-medium text-muted text-sm"
+            >
+              Finish Early ({completedCount}/{yourLineCount} lines)
+            </button>
+          </div>
+        )}
       </div>
 
       {scoreState && (
