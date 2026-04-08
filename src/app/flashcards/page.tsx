@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Shuffle, Filter } from 'lucide-react';
 import Header from '@/components/layout/header';
 import Flashcard from '@/components/flashcards/flashcard';
@@ -12,17 +12,26 @@ import { speakChinese } from '@/lib/audio';
 
 const categories = ['all', ...new Set(flashcards.map((c) => c.category))];
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+function buildDeck(category: string) {
+  const filtered =
+    category === 'all'
+      ? [...flashcards]
+      : flashcards.filter((c) => c.category === category);
+  return shuffleArray(filtered);
+}
+
 export default function FlashcardsPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
-
-  // Read category from URL on mount (e.g. /flashcards?cat=greetings)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const cat = params.get('cat');
-    if (cat && categories.includes(cat)) {
-      setCategoryFilter(cat);
-    }
-  }, []);
+  const [deck, setDeck] = useState(() => buildDeck('all'));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [correct, setCorrect] = useState(0);
@@ -30,13 +39,28 @@ export default function FlashcardsPage() {
   const [showComplete, setShowComplete] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const deck = useMemo(() => {
-    const filtered =
-      categoryFilter === 'all'
-        ? [...flashcards]
-        : flashcards.filter((c) => c.category === categoryFilter);
-    return filtered.sort(() => Math.random() - 0.5);
-  }, [categoryFilter]);
+  // Read category from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const cat = params.get('cat');
+    if (cat && categories.includes(cat)) {
+      setCategoryFilter(cat);
+      setDeck(buildDeck(cat));
+      setCurrentIndex(0);
+    }
+  }, []);
+
+  // Rebuild deck when category changes via filter buttons
+  const changeCategory = (cat: string) => {
+    setCategoryFilter(cat);
+    setDeck(buildDeck(cat));
+    setCurrentIndex(0);
+    setCorrect(0);
+    setReviewed(0);
+    setIsFlipped(false);
+    setShowComplete(false);
+    setShowFilters(false);
+  };
 
   const currentCard = deck[currentIndex];
 
@@ -69,6 +93,7 @@ export default function FlashcardsPage() {
   );
 
   const resetDeck = () => {
+    setDeck(buildDeck(categoryFilter));
     setCurrentIndex(0);
     setCorrect(0);
     setReviewed(0);
@@ -131,13 +156,7 @@ export default function FlashcardsPage() {
               {categories.map((cat) => (
                 <button
                   key={cat}
-                  onClick={() => {
-                    setCategoryFilter(cat);
-                    setCurrentIndex(0);
-                    setShowFilters(false);
-                    setCorrect(0);
-                    setReviewed(0);
-                  }}
+                  onClick={() => changeCategory(cat)}
                   className={`rounded-full px-3 py-1 text-sm capitalize ${
                     cat === categoryFilter
                       ? 'bg-primary text-white'
