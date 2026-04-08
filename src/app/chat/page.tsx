@@ -341,7 +341,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-32">
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-40">
         <div className="mx-auto max-w-lg space-y-4">
           {/* Topic Selector - shown when no topic is selected */}
           {!activeTopic && messages.length === 0 && (
@@ -438,8 +438,8 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Input - fixed to bottom */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-border bg-background px-4 py-3 safe-bottom">
+      {/* Input - fixed above bottom nav */}
+      <div className="fixed bottom-[4.5rem] left-0 right-0 z-40 border-t border-border bg-background px-4 py-3">
         {isRecording && (
           <div className="mx-auto max-w-lg mb-2 text-center">
             <p className="text-xs text-red-400 animate-pulse">Recording... tap mic to stop</p>
