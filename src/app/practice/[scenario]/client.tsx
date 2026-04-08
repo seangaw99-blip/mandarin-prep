@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, RotateCcw, Mic, Trophy } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { ArrowLeft, RotateCcw, Mic, MicOff, Trophy } from 'lucide-react';
 import Link from 'next/link';
 import Header from '@/components/layout/header';
 import DialogueBubble from '@/components/practice/dialogue-bubble';
@@ -12,6 +12,7 @@ import { speakChinese } from '@/lib/audio';
 import {
   listenForChinese,
   scorePronunciation,
+  type RecognitionController,
 } from '@/lib/speech-recognition';
 import { getHighScore, saveHighScore } from '@/lib/high-scores';
 
@@ -40,6 +41,7 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
   const [showFinalScore, setShowFinalScore] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<RecognitionController | null>(null);
 
   useEffect(() => {
     if (scenarioId) {
@@ -55,12 +57,10 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
     );
   }
 
-  // Figure out which lines are "yours"
   const yourLineIndices = dialogue.lines
     .map((line, i) => (line.speaker === practiceRole ? i : -1))
     .filter((i) => i !== -1);
 
-  const allYourLinesDone = yourLineIndices.every((i) => lineScores.has(i));
   const yourLineCount = yourLineIndices.length;
   const completedCount = yourLineIndices.filter((i) => lineScores.has(i)).length;
 
@@ -84,71 +84,91 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
     setShowFinalScore(false);
     setError(null);
     setHighScore(getHighScore(scenarioId));
+    controllerRef.current = null;
   };
 
   const revealAll = () =>
     setRevealedLines(new Set(dialogue.lines.map((_, i) => i)));
 
-  const handleSpeak = async (lineIndex: number) => {
+  const processResult = (
+    lineIndex: number,
+    transcript: string,
+    confidence: number
+  ) => {
     const line = dialogue.lines[lineIndex];
+    const score = scorePronunciation(transcript, line.chinese, confidence);
+
+    const newLineScore: LineScore = {
+      lineIndex,
+      score: score.score,
+      spoken: transcript,
+      expected: line.chinese,
+    };
+    setLineScores((prev) => {
+      const next = new Map(prev);
+      next.set(lineIndex, newLineScore);
+      return next;
+    });
+
+    setScoreState({
+      ...score,
+      spoken: transcript,
+      expected: line.chinese,
+    });
+
+    setRevealedLines((prev) => new Set(prev).add(lineIndex));
+
+    // Check if all lines done
+    const updatedCompleted = yourLineIndices.filter(
+      (i) => i === lineIndex || lineScores.has(i)
+    ).length;
+    if (updatedCompleted === yourLineCount) {
+      setTimeout(() => {
+        const allScores = [...lineScores.values(), newLineScore];
+        const avg = Math.round(
+          allScores.reduce((sum, s) => sum + s.score, 0) / allScores.length
+        );
+        const isNew = saveHighScore(scenarioId, avg);
+        setHighScore(isNew ? avg : getHighScore(scenarioId));
+        setShowFinalScore(true);
+      }, 3000);
+    }
+  };
+
+  const handleMicToggle = async (lineIndex: number) => {
+    // If currently listening on this line, STOP and process
+    if (listeningLine === lineIndex && controllerRef.current) {
+      controllerRef.current.stop();
+      controllerRef.current = null;
+      setListeningLine(null);
+      return;
+    }
+
+    // If listening on a different line, stop that first
+    if (controllerRef.current) {
+      controllerRef.current.stop();
+      controllerRef.current = null;
+    }
+
+    // Start listening
     setListeningLine(lineIndex);
     setError(null);
 
     try {
-      const result = await listenForChinese();
-      const score = scorePronunciation(
-        result.transcript,
-        line.chinese,
-        result.confidence
-      );
+      const controller = listenForChinese();
+      controllerRef.current = controller;
 
-      // Save line score
-      const newLineScore: LineScore = {
-        lineIndex,
-        score: score.score,
-        spoken: result.transcript,
-        expected: line.chinese,
-      };
-      setLineScores((prev) => {
-        const next = new Map(prev);
-        next.set(lineIndex, newLineScore);
-        return next;
-      });
-
-      // Show per-line popup
-      setScoreState({
-        ...score,
-        spoken: result.transcript,
-        expected: line.chinese,
-      });
-
-      // Reveal the line after speaking
-      setRevealedLines((prev) => new Set(prev).add(lineIndex));
-
-      // Check if all your lines are done (after this one)
-      const updatedCompleted = yourLineIndices.filter(
-        (i) => i === lineIndex || lineScores.has(i)
-      ).length;
-      if (updatedCompleted === yourLineCount) {
-        // Show final score after popup closes
-        setTimeout(() => {
-          const allScores = [...lineScores.values(), newLineScore];
-          const avg = Math.round(
-            allScores.reduce((sum, s) => sum + s.score, 0) / allScores.length
-          );
-          const isNew = saveHighScore(scenarioId, avg);
-          setHighScore(isNew ? avg : getHighScore(scenarioId));
-          setShowFinalScore(true);
-        }, 3000);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speech recognition failed');
-    } finally {
+      const result = await controller.promise;
+      controllerRef.current = null;
       setListeningLine(null);
+      processResult(lineIndex, result.transcript, result.confidence);
+    } catch (err) {
+      controllerRef.current = null;
+      setListeningLine(null);
+      setError(err instanceof Error ? err.message : 'Speech recognition failed');
     }
   };
 
-  // Calculate average for final score
   const finalAverage = useMemo(() => {
     const scores = [...lineScores.values()];
     if (scores.length === 0) return 0;
@@ -171,10 +191,10 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
 
         <p className="mb-2 text-sm text-muted">{dialogue.description}</p>
         <p className="mb-3 text-xs text-muted">
-          Tap the <Mic className="inline h-3 w-3" /> mic on your lines to practice speaking.
+          Tap <Mic className="inline h-3 w-3" /> to start recording, tap again to stop and get scored.
         </p>
 
-        {/* Progress + High Score bar */}
+        {/* Progress + High Score */}
         <div className="mb-4 flex items-center justify-between rounded-lg bg-card px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted">Progress:</span>
@@ -190,7 +210,6 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
           )}
         </div>
 
-        {/* Error message */}
         {error && (
           <div className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
             {error}
@@ -201,27 +220,17 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
         <div className="mb-4 flex items-center gap-2">
           <span className="text-sm text-muted">You are:</span>
           <button
-            onClick={() => {
-              setPracticeRole('A');
-              resetAll();
-            }}
+            onClick={() => { setPracticeRole('A'); resetAll(); }}
             className={`rounded-full px-3 py-1 text-sm ${
-              practiceRole === 'A'
-                ? 'bg-accent text-white'
-                : 'bg-card text-foreground'
+              practiceRole === 'A' ? 'bg-accent text-white' : 'bg-card text-foreground'
             }`}
           >
             Speaker A
           </button>
           <button
-            onClick={() => {
-              setPracticeRole('B');
-              resetAll();
-            }}
+            onClick={() => { setPracticeRole('B'); resetAll(); }}
             className={`rounded-full px-3 py-1 text-sm ${
-              practiceRole === 'B'
-                ? 'bg-primary text-white'
-                : 'bg-card text-foreground'
+              practiceRole === 'B' ? 'bg-primary text-white' : 'bg-card text-foreground'
             }`}
           >
             Speaker B
@@ -274,10 +283,8 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
                       {hasScore && lineScore && (
                         <span
                           className={`text-xs font-bold ${
-                            lineScore.score >= 75
-                              ? 'text-green-400'
-                              : lineScore.score >= 50
-                              ? 'text-yellow-400'
+                            lineScore.score >= 75 ? 'text-green-400'
+                              : lineScore.score >= 50 ? 'text-yellow-400'
                               : 'text-red-400'
                           }`}
                         >
@@ -285,8 +292,7 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
                         </span>
                       )}
                       <button
-                        onClick={() => handleSpeak(i)}
-                        disabled={isListening}
+                        onClick={() => handleMicToggle(i)}
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
                           isListening
                             ? 'bg-red-500 text-white animate-pulse'
@@ -294,9 +300,9 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
                             ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                             : 'bg-card text-muted hover:text-primary hover:bg-card/80'
                         }`}
-                        aria-label="Speak this line"
+                        aria-label={isListening ? 'Stop recording' : 'Start recording'}
                       >
-                        <Mic size={18} />
+                        {isListening ? <MicOff size={18} /> : <Mic size={18} />}
                       </button>
                     </div>
                   )}
@@ -307,7 +313,6 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
         </div>
       </div>
 
-      {/* Per-line Score Popup */}
       {scoreState && (
         <ScorePopup
           score={scoreState.score}
@@ -319,7 +324,6 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
         />
       )}
 
-      {/* Final Score Screen */}
       {showFinalScore && (
         <FinalScore
           averageScore={finalAverage}

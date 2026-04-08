@@ -3,55 +3,118 @@ export interface RecognitionResult {
   confidence: number;
 }
 
-export function listenForChinese(): Promise<RecognitionResult> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined') {
-      reject(new Error('Not in browser'));
-      return;
-    }
+export interface RecognitionController {
+  stop: () => void;
+  promise: Promise<RecognitionResult>;
+}
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let activeRecognition: any = null;
 
-    if (!SpeechRecognitionAPI) {
-      reject(new Error('Speech recognition not supported in this browser. Try Chrome.'));
-      return;
-    }
+export function listenForChinese(): RecognitionController {
+  // Stop any existing recognition
+  if (activeRecognition) {
+    try { activeRecognition.stop(); } catch {}
+    activeRecognition = null;
+  }
 
-    const recognition = new SpeechRecognitionAPI();
-    recognition.lang = 'zh-CN';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = false;
+  let resolvePromise: (result: RecognitionResult) => void;
+  let rejectPromise: (error: Error) => void;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      const result = event.results[0][0];
-      resolve({
-        transcript: result.transcript,
-        confidence: result.confidence,
-      });
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      if (event.error === 'no-speech') {
-        reject(new Error('No speech detected. Try again.'));
-      } else if (event.error === 'not-allowed') {
-        reject(new Error('Microphone access denied. Allow microphone in browser settings.'));
-      } else {
-        reject(new Error(`Speech error: ${event.error}`));
-      }
-    };
-
-    recognition.onend = () => {
-      // If no result was captured
-    };
-
-    recognition.start();
+  const promise = new Promise<RecognitionResult>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
   });
+
+  if (typeof window === 'undefined') {
+    rejectPromise!(new Error('Not in browser'));
+    return { stop: () => {}, promise };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SpeechRecognitionAPI =
+    (window as any).SpeechRecognition ||
+    (window as any).webkitSpeechRecognition;
+
+  if (!SpeechRecognitionAPI) {
+    rejectPromise!(new Error('Speech recognition not supported in this browser. Try Chrome.'));
+    return { stop: () => {}, promise };
+  }
+
+  const recognition = new SpeechRecognitionAPI();
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  recognition.continuous = true;
+
+  let finalTranscript = '';
+  let finalConfidence = 0;
+  let hasResult = false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  recognition.onresult = (event: any) => {
+    let interim = '';
+    for (let i = 0; i < event.results.length; i++) {
+      const result = event.results[i];
+      if (result.isFinal) {
+        finalTranscript += result[0].transcript;
+        finalConfidence = result[0].confidence;
+        hasResult = true;
+      } else {
+        interim += result[0].transcript;
+      }
+    }
+    // If we have interim but no final yet, store it as backup
+    if (!hasResult && interim) {
+      finalTranscript = interim;
+      finalConfidence = 0.5;
+      hasResult = true;
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  recognition.onerror = (event: any) => {
+    activeRecognition = null;
+    if (event.error === 'no-speech') {
+      rejectPromise!(new Error('No speech detected. Try again.'));
+    } else if (event.error === 'not-allowed') {
+      rejectPromise!(new Error('Microphone access denied. Allow microphone in browser settings.'));
+    } else if (event.error === 'aborted') {
+      // User stopped -- resolve with whatever we have
+      if (hasResult) {
+        resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
+      } else {
+        rejectPromise!(new Error('No speech detected. Try again.'));
+      }
+    } else {
+      rejectPromise!(new Error(`Speech error: ${event.error}`));
+    }
+  };
+
+  recognition.onend = () => {
+    activeRecognition = null;
+    if (hasResult) {
+      resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
+    }
+  };
+
+  recognition.start();
+  activeRecognition = recognition;
+
+  const stop = () => {
+    if (activeRecognition) {
+      try { activeRecognition.stop(); } catch {}
+      activeRecognition = null;
+      // If we have results, resolve immediately
+      if (hasResult) {
+        resolvePromise!({ transcript: finalTranscript, confidence: finalConfidence });
+      } else {
+        rejectPromise!(new Error('No speech detected. Try again.'));
+      }
+    }
+  };
+
+  return { stop, promise };
 }
 
 export function scorePronunciation(
@@ -63,14 +126,12 @@ export function scorePronunciation(
   grade: 'perfect' | 'great' | 'good' | 'fair' | 'try-again';
   feedback: string;
 } {
-  // Normalize strings for comparison
   const normalize = (s: string) =>
     s.replace(/[，。？！、\s]/g, '').toLowerCase();
 
   const spokenNorm = normalize(spoken);
   const expectedNorm = normalize(expected);
 
-  // Exact match
   if (spokenNorm === expectedNorm) {
     const score = Math.round(85 + confidence * 15);
     return {
@@ -80,7 +141,6 @@ export function scorePronunciation(
     };
   }
 
-  // Calculate character-level similarity
   const maxLen = Math.max(spokenNorm.length, expectedNorm.length);
   if (maxLen === 0) {
     return { score: 0, grade: 'try-again', feedback: 'No speech detected.' };
@@ -90,14 +150,12 @@ export function scorePronunciation(
   const expectedChars = expectedNorm.split('');
   const spokenChars = spokenNorm.split('');
 
-  // Count matching characters (order-aware)
   for (let i = 0; i < Math.min(spokenChars.length, expectedChars.length); i++) {
     if (spokenChars[i] === expectedChars[i]) {
       matches++;
     }
   }
 
-  // Also check for characters present but in wrong position
   let partialMatches = 0;
   const remainingExpected = [...expectedChars];
   for (const char of spokenChars) {
