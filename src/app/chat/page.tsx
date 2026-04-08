@@ -47,7 +47,7 @@ interface Topic {
   icon: string;
   description: string;
   systemPrompt: string;
-  starterMessage: string;
+  starterMessage: { chinese: string; pinyin: string; english: string } | null;
 }
 
 const TOPICS: Topic[] = [
@@ -57,7 +57,7 @@ const TOPICS: Topic[] = [
     icon: '🗣️',
     description: 'Open conversation on any topic',
     systemPrompt: `You are a friendly Mandarin Chinese conversation partner helping a beginner (HSK 1-2 level) named Sean practice Chinese. Sean runs a packaging company called IPLMI and is traveling to China for business.\n\n${BASE_RULES}`,
-    starterMessage: '',
+    starterMessage: null,
   },
   {
     id: 'factory',
@@ -65,7 +65,7 @@ const TOPICS: Topic[] = [
     icon: '🏭',
     description: 'Practice visiting a packaging supplier',
     systemPrompt: `You are a Chinese factory manager at a packaging/box converting factory. Sean (HSK 1-2 level) from IPLMI Packaging Company is visiting your factory. Role-play as the factory manager showing him around, discussing production lines, materials (corrugated paper, printing, die-cutting), quality control, and capacity. Use packaging industry vocabulary naturally.\n\n${BASE_RULES}`,
-    starterMessage: '欢迎来到我们的工厂！我带你参观一下。',
+    starterMessage: { chinese: '欢迎来到我们的工厂！我带你参观一下。', pinyin: 'Huānyíng lái dào wǒmen de gōngchǎng! Wǒ dài nǐ cānguān yíxià.', english: 'Welcome to our factory! Let me show you around.' },
   },
   {
     id: 'restaurant',
@@ -73,7 +73,7 @@ const TOPICS: Topic[] = [
     icon: '🍜',
     description: 'Practice ordering food and dining',
     systemPrompt: `You are a friendly waiter/waitress at a Chinese restaurant. Sean (HSK 1-2 level) is a foreign customer dining at your restaurant. Help him order food, explain menu items, ask about preferences (spicy/not spicy), recommend dishes, and handle the bill. Use common food vocabulary.\n\n${BASE_RULES}`,
-    starterMessage: '欢迎光临！请问几位？',
+    starterMessage: { chinese: '欢迎光临！请问几位？', pinyin: 'Huānyíng guānglín! Qǐngwèn jǐ wèi?', english: 'Welcome! How many people?' },
   },
   {
     id: 'taxi',
@@ -81,7 +81,7 @@ const TOPICS: Topic[] = [
     icon: '🚕',
     description: 'Practice giving directions to a driver',
     systemPrompt: `You are a taxi driver in a Chinese city. Sean (HSK 1-2 level) is your passenger. He needs to get to various places (hotel, factory, restaurant, airport). Ask where he wants to go, discuss the route, mention traffic, ask about payment method (WeChat Pay, Alipay, cash). Use direction and transportation vocabulary.\n\n${BASE_RULES}`,
-    starterMessage: '你好！去哪里？',
+    starterMessage: { chinese: '你好！去哪里？', pinyin: 'Nǐ hǎo! Qù nǎlǐ?', english: 'Hello! Where to?' },
   },
   {
     id: 'negotiation',
@@ -89,7 +89,7 @@ const TOPICS: Topic[] = [
     icon: '💰',
     description: 'Practice negotiating prices with a supplier',
     systemPrompt: `You are a Chinese packaging materials supplier. Sean (HSK 1-2 level) from IPLMI Packaging Company wants to negotiate prices for corrugated boxes. Discuss pricing, MOQ (minimum order quantity), discounts for bulk orders, delivery dates, payment terms, and quality requirements. Be willing to negotiate but start with a higher price.\n\n${BASE_RULES}`,
-    starterMessage: '你好！这是我们最新的报价单。',
+    starterMessage: { chinese: '你好！这是我们最新的报价单。', pinyin: 'Nǐ hǎo! Zhè shì wǒmen zuìxīn de bàojià dān.', english: 'Hello! This is our latest quotation.' },
   },
   {
     id: 'hotel',
@@ -97,7 +97,7 @@ const TOPICS: Topic[] = [
     icon: '🏨',
     description: 'Practice checking into a hotel',
     systemPrompt: `You are a hotel receptionist at a business hotel in China. Sean (HSK 1-2 level) is checking in. Help him with reservation, room assignment, WiFi, breakfast times, taxi service, and any room issues. Be polite and helpful.\n\n${BASE_RULES}`,
-    starterMessage: '您好，欢迎入住！请问有预订吗？',
+    starterMessage: { chinese: '您好，欢迎入住！请问有预订吗？', pinyin: 'Nín hǎo, huānyíng rùzhù! Qǐngwèn yǒu yùdìng ma?', english: 'Hello, welcome! Do you have a reservation?' },
   },
   {
     id: 'shopping',
@@ -105,7 +105,7 @@ const TOPICS: Topic[] = [
     icon: '🛍️',
     description: 'Practice buying things at a market or store',
     systemPrompt: `You are a shopkeeper at a Chinese market/store. Sean (HSK 1-2 level) is shopping. Help him find items, discuss prices (use 块/元), sizes, colors, and haggle a bit. Use measure words (个, 瓶, 斤, 盒) and money expressions naturally.\n\n${BASE_RULES}`,
-    starterMessage: '欢迎！您要买什么？',
+    starterMessage: { chinese: '欢迎！您要买什么？', pinyin: 'Huānyíng! Nín yào mǎi shénme?', english: 'Welcome! What would you like to buy?' },
   },
   {
     id: 'smalltalk',
@@ -113,7 +113,7 @@ const TOPICS: Topic[] = [
     icon: '☕',
     description: 'Practice casual conversation with a colleague',
     systemPrompt: `You are a friendly Chinese business colleague having tea/coffee with Sean (HSK 1-2 level) during a break at a factory visit. Make small talk about family, hobbies, weather, food, travel, and Chinese culture. Keep it light and friendly. Ask questions about his life too.\n\n${BASE_RULES}`,
-    starterMessage: '来，喝杯茶！你来中国几天了？',
+    starterMessage: { chinese: '来，喝杯茶！你来中国几天了？', pinyin: 'Lái, hē bēi chá! Nǐ lái Zhōngguó jǐ tiān le?', english: 'Come, have some tea! How many days have you been in China?' },
   },
 ];
 
@@ -267,8 +267,9 @@ export default function ChatPage() {
     localStorage.removeItem(CHAT_HISTORY_KEY);
     // If the topic has a starter message, add it as the AI's first message
     if (topic.starterMessage) {
+      const s = topic.starterMessage;
       setMessages([
-        { role: 'assistant', content: `Chinese: ${topic.starterMessage}\nPinyin: \nEnglish: ` },
+        { role: 'assistant', content: `Chinese: ${s.chinese}\nPinyin: ${s.pinyin}\nEnglish: ${s.english}` },
       ]);
     }
   };
