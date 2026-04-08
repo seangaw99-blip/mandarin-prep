@@ -1,17 +1,33 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { ArrowLeft, RotateCcw, Mic } from 'lucide-react';
 import Link from 'next/link';
 import Header from '@/components/layout/header';
 import DialogueBubble from '@/components/practice/dialogue-bubble';
+import ScorePopup from '@/components/practice/score-popup';
 import { dialogues } from '@/data/dialogues';
 import { speakChinese } from '@/lib/audio';
+import {
+  listenForChinese,
+  scorePronunciation,
+} from '@/lib/speech-recognition';
+
+interface ScoreState {
+  score: number;
+  grade: 'perfect' | 'great' | 'good' | 'fair' | 'try-again';
+  feedback: string;
+  spoken: string;
+  expected: string;
+}
 
 export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
   const dialogue = dialogues.find((d) => d.id === scenarioId);
   const [revealedLines, setRevealedLines] = useState<Set<number>>(new Set());
   const [practiceRole, setPracticeRole] = useState<'A' | 'B'>('A');
+  const [listeningLine, setListeningLine] = useState<number | null>(null);
+  const [scoreState, setScoreState] = useState<ScoreState | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (!dialogue) {
     return (
@@ -34,9 +50,40 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
     });
   };
 
-  const resetAll = () => setRevealedLines(new Set());
+  const resetAll = () => {
+    setRevealedLines(new Set());
+    setScoreState(null);
+    setError(null);
+  };
+
   const revealAll = () =>
     setRevealedLines(new Set(dialogue.lines.map((_, i) => i)));
+
+  const handleSpeak = async (lineIndex: number) => {
+    const line = dialogue.lines[lineIndex];
+    setListeningLine(lineIndex);
+    setError(null);
+
+    try {
+      const result = await listenForChinese();
+      const score = scorePronunciation(
+        result.transcript,
+        line.chinese,
+        result.confidence
+      );
+      setScoreState({
+        ...score,
+        spoken: result.transcript,
+        expected: line.chinese,
+      });
+      // Reveal the line after speaking
+      setRevealedLines((prev) => new Set(prev).add(lineIndex));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Speech recognition failed');
+    } finally {
+      setListeningLine(null);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -50,7 +97,17 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
           All Dialogues
         </Link>
 
-        <p className="mb-4 text-sm text-muted">{dialogue.description}</p>
+        <p className="mb-2 text-sm text-muted">{dialogue.description}</p>
+        <p className="mb-4 text-xs text-muted">
+          Tap the <Mic className="inline h-3 w-3" /> mic on your lines to practice speaking. The app will score your pronunciation.
+        </p>
+
+        {/* Error message */}
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
         {/* Role selector */}
         <div className="mb-4 flex items-center gap-2">
@@ -98,25 +155,56 @@ export default function PracticeClient({ scenarioId }: { scenarioId: string }) {
         <div className="space-y-3">
           {dialogue.lines.map((line, i) => {
             const isYou = line.speaker === practiceRole;
+            const isListening = listeningLine === i;
             return (
               <div
                 key={i}
                 className="animate-fadeIn"
                 style={{ animationDelay: `${i * 0.05}s` }}
               >
-                <DialogueBubble
-                  speaker={line.speaker}
-                  chinese={line.chinese}
-                  pinyin={line.pinyin}
-                  english={line.english}
-                  isRevealed={!isYou || revealedLines.has(i)}
-                  onReveal={() => toggleReveal(i)}
-                />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <DialogueBubble
+                      speaker={line.speaker}
+                      chinese={line.chinese}
+                      pinyin={line.pinyin}
+                      english={line.english}
+                      isRevealed={!isYou || revealedLines.has(i)}
+                      onReveal={() => toggleReveal(i)}
+                    />
+                  </div>
+                  {isYou && (
+                    <button
+                      onClick={() => handleSpeak(i)}
+                      disabled={isListening}
+                      className={`mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
+                        isListening
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : 'bg-card text-muted hover:text-primary hover:bg-card/80'
+                      }`}
+                      aria-label="Speak this line"
+                    >
+                      <Mic size={18} />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Score Popup */}
+      {scoreState && (
+        <ScorePopup
+          score={scoreState.score}
+          grade={scoreState.grade}
+          feedback={scoreState.feedback}
+          spoken={scoreState.spoken}
+          expected={scoreState.expected}
+          onClose={() => setScoreState(null)}
+        />
+      )}
     </div>
   );
 }
