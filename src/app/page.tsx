@@ -235,6 +235,16 @@ export default function HomePage() {
       </div>
 
       <div className="mx-auto max-w-lg space-y-6 px-4 py-6">
+        {/* Greeting & CTA */}
+        <Link href="/flashcards">
+          <section className="rounded-xl bg-card p-4 active:scale-[0.98] transition-transform">
+            <p className="font-chinese text-2xl font-bold">你好，Sean！准备好学习了吗？</p>
+            <p className="text-sm text-muted mt-1">Nǐ hǎo, Sean! Zhǔnbèi hǎo xuéxí le ma?</p>
+            <p className="text-sm mt-1">Hello, Sean! Ready to study?</p>
+            <p className="text-xs text-primary font-semibold mt-2">Start a flashcard session →</p>
+          </section>
+        </Link>
+
         {/* Suggested Study Tasks */}
         <section>
           <div className="mb-3 flex items-center gap-2">
@@ -295,13 +305,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Quick Phrase */}
-        <section className="rounded-xl bg-card p-4">
-          <p className="text-xs text-muted mb-1">Phrase of the day</p>
-          <p className="font-chinese text-2xl font-bold">你好，我是IPLMI包装公司的Sean。</p>
-          <p className="text-sm text-muted mt-1">Nǐ hǎo, wǒ shì IPLMI bāozhuāng gōngsī de Sean.</p>
-          <p className="text-sm mt-1">Hello, I&apos;m Sean from IPLMI Packaging Company.</p>
-        </section>
       </div>
     </div>
   );
