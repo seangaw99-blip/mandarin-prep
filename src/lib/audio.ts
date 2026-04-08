@@ -1,4 +1,4 @@
-export function speakChinese(text: string, rate: number = 0.8) {
+export function speakChinese(text: string, rate: number = 0.55) {
   if (typeof window === 'undefined') return;
 
   const synth = window.speechSynthesis;
