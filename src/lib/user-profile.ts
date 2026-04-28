@@ -1,9 +1,16 @@
+export type LearningGoal = 'travel' | 'business' | 'exam' | 'heritage' | 'fluency';
+export type StartingLevel = 'beginner' | 'basics' | 'hsk1' | 'hsk2plus';
+
 export interface UserProfile {
   name: string;
-  occupation: string;
+  goal: LearningGoal;
+  startingLevel: StartingLevel;
+  dailyMinutes: 5 | 10 | 15 | 20;
   industry: string;
-  gender: 'male' | 'female' | 'other';
-  age: number;
+  // Legacy / optional
+  occupation?: string;
+  gender?: 'male' | 'female' | 'other';
+  age?: number;
   completedAt: string;
 }
 
@@ -13,7 +20,13 @@ export function getUserProfile(): UserProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    const parsed = JSON.parse(data);
+    // Migrate legacy profiles that lack new fields
+    if (!parsed.goal) parsed.goal = 'fluency';
+    if (!parsed.startingLevel) parsed.startingLevel = 'beginner';
+    if (!parsed.dailyMinutes) parsed.dailyMinutes = 10;
+    return parsed as UserProfile;
   } catch {
     return null;
   }
@@ -25,18 +38,6 @@ export function saveUserProfile(profile: UserProfile) {
 
 export function clearUserProfile() {
   localStorage.removeItem(STORAGE_KEY);
-}
-
-export function getChineseIntro(profile: UserProfile): {
-  chinese: string;
-  pinyin: string;
-  english: string;
-} {
-  return {
-    chinese: `你好，我是${profile.industry}公司的${profile.name}。`,
-    pinyin: `Nǐ hǎo, wǒ shì ${profile.industry} gōngsī de ${profile.name}.`,
-    english: `Hello, I'm ${profile.name} from a ${profile.industry} company.`,
-  };
 }
 
 export function getGreeting(profile: UserProfile): {
@@ -64,4 +65,15 @@ export function getGreeting(profile: UserProfile): {
       english: `Good evening, ${profile.name}! What did you learn today?`,
     };
   }
+}
+
+export function getGoalLabel(goal: LearningGoal): string {
+  const labels: Record<LearningGoal, string> = {
+    travel: 'Travel & Survival',
+    business: 'Business & Work',
+    exam: 'Pass HSK Exam',
+    heritage: 'Heritage & Family',
+    fluency: 'General Fluency',
+  };
+  return labels[goal];
 }

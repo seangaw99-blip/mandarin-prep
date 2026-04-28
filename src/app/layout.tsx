@@ -16,13 +16,13 @@ const notoSansSC = Noto_Sans_SC({
 });
 
 export const metadata: Metadata = {
-  title: 'Mandarin Prep',
-  description: 'Learn Mandarin for your China business trip',
+  title: 'Mandarin Hero',
+  description: 'Learn Mandarin from zero to fluent — dictionary, SRS flashcards, AI conversation practice, tone training, and structured HSK curriculum.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Mandarin Prep',
+    title: 'Mandarin Hero',
   },
 };
 

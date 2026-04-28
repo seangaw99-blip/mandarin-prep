@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Settings, Bot, Mic, MicOff } from 'lucide-react';
+import { Send, Trash2, Settings, Bot, Mic, MicOff, ChevronDown } from 'lucide-react';
 import Header from '@/components/layout/header';
 import SpeakerButton from '@/components/ui/speaker-button';
 import { listenForChinese, type RecognitionController } from '@/lib/speech-recognition';
-import { getUserProfile } from '@/lib/user-profile';
+import { getUserProfile, type StartingLevel, type LearningGoal } from '@/lib/user-profile';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -23,48 +23,72 @@ interface ParsedResponse {
 const STORAGE_KEY = 'mandarin-chat-groq-key';
 const CHAT_HISTORY_KEY = 'mandarin-chat-history';
 
-const BASE_RULES = `Rules:
+const LEVEL_LABELS: Record<StartingLevel, string> = {
+  beginner: 'Absolute Beginner',
+  basics: 'HSK 1 Basics',
+  hsk1: 'HSK 1–2',
+  hsk2plus: 'HSK 2+',
+};
+
+function getLevelContext(level: StartingLevel): string {
+  switch (level) {
+    case 'beginner':
+      return `The student is an absolute beginner. Use ONLY the most basic HSK 1 words (我, 你, 是, 有, 不, 吗, 什么, 好, 谢谢, 对不起, 你好, numbers). Keep every sentence under 8 characters. After each Chinese sentence, add a brief word-for-word breakdown in parentheses — e.g., 我 (I) 是 (am) 学生 (student). Be very patient and encouraging.`;
+    case 'basics':
+      return `The student knows basic HSK 1 vocabulary. Use HSK 1 vocabulary and introduce simple HSK 2 words. Keep sentences short (under 15 characters). When introducing a new word, give its meaning in parentheses the first time.`;
+    case 'hsk1':
+      return `The student is around HSK 1–2 level. Use HSK 1–2 vocabulary comfortably. You may introduce occasional HSK 3 words (mark them with English in parentheses). Sentences can include simple two-clause structures.`;
+    case 'hsk2plus':
+      return `The student has solid HSK 1–2 foundations and is working toward HSK 3. Use HSK 1–3 vocabulary freely. You may use compound sentences, resultative complements, and comparison structures. Occasionally challenge them with an HSK 4 word.`;
+  }
+}
+
+function getBaseRules(level: StartingLevel): string {
+  const levelCtx = getLevelContext(level);
+  return `Student level: ${levelCtx}
+
+Rules:
 1. ALWAYS respond in EXACTLY this format (every single response, no exceptions):
    Chinese: [your response in Chinese characters only]
    Pinyin: [pinyin with tone marks for the Chinese above]
    English: [full English translation of the Chinese above]
 
 2. If the user makes a mistake in their Chinese, add this AFTER the above format:
-   Correction: [Write in ENGLISH explaining what they said wrong, what the correct Chinese is, and the pinyin. Example: "You said 我去吃 but it should be 我想吃 (wǒ xiǎng chī) meaning 'I want to eat'."]
+   Correction: [Write in ENGLISH: what they said, what was wrong, the correct Chinese with pinyin. Example: "You wrote 我去吃 — try 我想吃 (wǒ xiǎng chī) to say 'I want to eat'. 想 expresses desire here."]
 
-3. Keep responses short (1-2 sentences). Use simple HSK 1-2 vocabulary.
-4. If the user writes in English, still respond using the format above. Encourage them to try Chinese.
-5. The English line must ALWAYS be a complete English translation, never Chinese characters.
-6. The Correction line must ALWAYS be written in English with pinyin, never just Chinese.
-7. Be encouraging and patient. Ask simple follow-up questions.
-8. Stay in character for the chosen scenario.
+3. Keep responses concise (1–2 sentences). Prioritize vocabulary at the student's level.
+4. If the user writes in English, respond in the format above and gently encourage them to try Chinese.
+5. The English and Correction lines must ALWAYS be in English.
+6. Be warm, patient, and encouraging. Ask a simple follow-up question to keep the conversation going.
+7. Stay in character for the chosen scenario.
 
-CRITICAL: The English line and Correction line must be in ENGLISH. The user is a beginner learning Chinese and needs English explanations.`;
+CRITICAL: English and Correction lines must be in ENGLISH only. Never put Chinese characters on those lines.`;
+}
 
 interface Topic {
   id: string;
   label: string;
   icon: string;
   description: string;
-  systemPrompt: string;
+  systemPromptTemplate: string;
   starterMessage: { chinese: string; pinyin: string; english: string } | null;
 }
 
-const TOPICS: Topic[] = [
+const TOPIC_TEMPLATES: Topic[] = [
   {
     id: 'free',
     label: 'Free Chat',
     icon: '🗣️',
     description: 'Open conversation on any topic',
-    systemPrompt: `You are a friendly Mandarin Chinese conversation partner helping a beginner (HSK 1-2 level) named Sean practice Chinese. Sean runs a packaging company called IPLMI and is traveling to China for business.\n\n${BASE_RULES}`,
+    systemPromptTemplate: `You are a friendly Mandarin Chinese conversation partner helping {{NAME}} practice Chinese. {{NAME}} works in the {{INDUSTRY}} industry.\n\n{{RULES}}`,
     starterMessage: null,
   },
   {
     id: 'factory',
     label: 'Factory Visit',
     icon: '🏭',
-    description: 'Practice visiting a packaging supplier',
-    systemPrompt: `You are a Chinese factory manager at a packaging/box converting factory. Sean (HSK 1-2 level) from IPLMI Packaging Company is visiting your factory. Role-play as the factory manager showing him around, discussing production lines, materials (corrugated paper, printing, die-cutting), quality control, and capacity. Use packaging industry vocabulary naturally.\n\n${BASE_RULES}`,
+    description: 'Practice visiting a supplier',
+    systemPromptTemplate: `You are a Chinese factory manager at a {{INDUSTRY}} factory. {{NAME}} is visiting your factory. Role-play as the manager showing them around, discussing production, quality control, and capacity. Use {{INDUSTRY}}-relevant vocabulary naturally.\n\n{{RULES}}`,
     starterMessage: { chinese: '欢迎来到我们的工厂！我带你参观一下。', pinyin: 'Huānyíng lái dào wǒmen de gōngchǎng! Wǒ dài nǐ cānguān yíxià.', english: 'Welcome to our factory! Let me show you around.' },
   },
   {
@@ -72,7 +96,7 @@ const TOPICS: Topic[] = [
     label: 'Restaurant',
     icon: '🍜',
     description: 'Practice ordering food and dining',
-    systemPrompt: `You are a friendly waiter/waitress at a Chinese restaurant. Sean (HSK 1-2 level) is a foreign customer dining at your restaurant. Help him order food, explain menu items, ask about preferences (spicy/not spicy), recommend dishes, and handle the bill. Use common food vocabulary.\n\n${BASE_RULES}`,
+    systemPromptTemplate: `You are a friendly waiter/waitress at a Chinese restaurant. {{NAME}} is a foreign customer. Help them order food, explain menu items, ask about preferences, and handle the bill. Use common food vocabulary.\n\n{{RULES}}`,
     starterMessage: { chinese: '欢迎光临！请问几位？', pinyin: 'Huānyíng guānglín! Qǐngwèn jǐ wèi?', english: 'Welcome! How many people?' },
   },
   {
@@ -80,15 +104,15 @@ const TOPICS: Topic[] = [
     label: 'Taxi Ride',
     icon: '🚕',
     description: 'Practice giving directions to a driver',
-    systemPrompt: `You are a taxi driver in a Chinese city. Sean (HSK 1-2 level) is your passenger. He needs to get to various places (hotel, factory, restaurant, airport). Ask where he wants to go, discuss the route, mention traffic, ask about payment method (WeChat Pay, Alipay, cash). Use direction and transportation vocabulary.\n\n${BASE_RULES}`,
+    systemPromptTemplate: `You are a taxi driver in a Chinese city. {{NAME}} is your passenger. They need to get to various places (hotel, factory, restaurant, airport). Ask where they want to go, mention traffic, discuss payment methods.\n\n{{RULES}}`,
     starterMessage: { chinese: '你好！去哪里？', pinyin: 'Nǐ hǎo! Qù nǎlǐ?', english: 'Hello! Where to?' },
   },
   {
     id: 'negotiation',
     label: 'Price Negotiation',
     icon: '💰',
-    description: 'Practice negotiating prices with a supplier',
-    systemPrompt: `You are a Chinese packaging materials supplier. Sean (HSK 1-2 level) from IPLMI Packaging Company wants to negotiate prices for corrugated boxes. Discuss pricing, MOQ (minimum order quantity), discounts for bulk orders, delivery dates, payment terms, and quality requirements. Be willing to negotiate but start with a higher price.\n\n${BASE_RULES}`,
+    description: 'Practice negotiating prices',
+    systemPromptTemplate: `You are a Chinese supplier in the {{INDUSTRY}} industry. {{NAME}} wants to negotiate prices, MOQ, discounts, delivery dates, and payment terms. Be willing to negotiate but start at a higher price.\n\n{{RULES}}`,
     starterMessage: { chinese: '你好！这是我们最新的报价单。', pinyin: 'Nǐ hǎo! Zhè shì wǒmen zuìxīn de bàojià dān.', english: 'Hello! This is our latest quotation.' },
   },
   {
@@ -96,26 +120,61 @@ const TOPICS: Topic[] = [
     label: 'Hotel Check-in',
     icon: '🏨',
     description: 'Practice checking into a hotel',
-    systemPrompt: `You are a hotel receptionist at a business hotel in China. Sean (HSK 1-2 level) is checking in. Help him with reservation, room assignment, WiFi, breakfast times, taxi service, and any room issues. Be polite and helpful.\n\n${BASE_RULES}`,
+    systemPromptTemplate: `You are a hotel receptionist at a business hotel in China. {{NAME}} is checking in. Help them with reservation, room, WiFi, breakfast, and taxi service.\n\n{{RULES}}`,
     starterMessage: { chinese: '您好，欢迎入住！请问有预订吗？', pinyin: 'Nín hǎo, huānyíng rùzhù! Qǐngwèn yǒu yùdìng ma?', english: 'Hello, welcome! Do you have a reservation?' },
+  },
+  {
+    id: 'cafe',
+    label: 'Café Meeting',
+    icon: '☕',
+    description: 'Casual chat with a new Chinese friend',
+    systemPromptTemplate: `You are a friendly young Chinese person meeting {{NAME}} at a café for the first time. You are curious about their life, work, and country. Make friendly small talk about hobbies, food, family, and travel. Keep it relaxed and fun.\n\n{{RULES}}`,
+    starterMessage: { chinese: '你好！第一次来中国吗？', pinyin: 'Nǐ hǎo! Dì yī cì lái Zhōngguó ma?', english: 'Hello! Is this your first time in China?' },
+  },
+  {
+    id: 'airport',
+    label: 'Airport',
+    icon: '✈️',
+    description: 'Practice at the airport and customs',
+    systemPromptTemplate: `You are an airport staff member at a Chinese international airport. {{NAME}} needs help with check-in, customs, baggage, finding gates, and taking the airport metro. Be helpful and use airport/transport vocabulary.\n\n{{RULES}}`,
+    starterMessage: { chinese: '您好！请出示您的护照和机票。', pinyin: 'Nín hǎo! Qǐng chūshì nín de hùzhào hé jīpiào.', english: 'Hello! Please show your passport and ticket.' },
   },
   {
     id: 'shopping',
     label: 'Shopping',
     icon: '🛍️',
-    description: 'Practice buying things at a market or store',
-    systemPrompt: `You are a shopkeeper at a Chinese market/store. Sean (HSK 1-2 level) is shopping. Help him find items, discuss prices (use 块/元), sizes, colors, and haggle a bit. Use measure words (个, 瓶, 斤, 盒) and money expressions naturally.\n\n${BASE_RULES}`,
+    description: 'Practice buying things at a market',
+    systemPromptTemplate: `You are a shopkeeper at a Chinese market. {{NAME}} is shopping. Help them find items, discuss prices (use 块/元), sizes, colors, and bargain a little. Use measure words and money expressions.\n\n{{RULES}}`,
     starterMessage: { chinese: '欢迎！您要买什么？', pinyin: 'Huānyíng! Nín yào mǎi shénme?', english: 'Welcome! What would you like to buy?' },
   },
   {
-    id: 'smalltalk',
-    label: 'Small Talk',
-    icon: '☕',
-    description: 'Practice casual conversation with a colleague',
-    systemPrompt: `You are a friendly Chinese business colleague having tea/coffee with Sean (HSK 1-2 level) during a break at a factory visit. Make small talk about family, hobbies, weather, food, travel, and Chinese culture. Keep it light and friendly. Ask questions about his life too.\n\n${BASE_RULES}`,
-    starterMessage: { chinese: '来，喝杯茶！你来中国几天了？', pinyin: 'Lái, hē bēi chá! Nǐ lái Zhōngguó jǐ tiān le?', english: 'Come, have some tea! How many days have you been in China?' },
+    id: 'doctor',
+    label: 'Doctor Visit',
+    icon: '🏥',
+    description: 'Practice describing symptoms',
+    systemPromptTemplate: `You are a doctor at a Chinese clinic. {{NAME}} is a patient describing symptoms (headache, fever, stomach pain, etc.). Ask about their symptoms, give simple advice, and prescribe medicine. Use body parts and health vocabulary.\n\n{{RULES}}`,
+    starterMessage: { chinese: '你好！哪里不舒服？', pinyin: 'Nǐ hǎo! Nǎlǐ bù shūfu?', english: 'Hello! What seems to be the problem?' },
   },
 ];
+
+function buildTopics(
+  userName: string,
+  industry: string,
+  level: StartingLevel,
+): Topic[] {
+  const rules = getBaseRules(level);
+  return TOPIC_TEMPLATES.map((t) => ({
+    ...t,
+    systemPromptTemplate: t.systemPromptTemplate
+      .replace(/\{\{NAME\}\}/g, userName || 'the student')
+      .replace(/\{\{INDUSTRY\}\}/g, industry || 'business')
+      .replace(/\{\{RULES\}\}/g, rules),
+  }));
+}
+
+function getSystemPrompt(topic: Topic): string {
+  return topic.systemPromptTemplate;
+}
 
 function parseResponse(text: string): ParsedResponse {
   const lines = text.split('\n');
@@ -146,19 +205,6 @@ function parseResponse(text: string): ParsedResponse {
   };
 }
 
-function buildTopics(userName: string, _occupation: string, industry: string): Topic[] {
-  return TOPICS.map((t) => ({
-    ...t,
-    systemPrompt: t.systemPrompt
-      .replace(/Sean/g, userName)
-      .replace(/a packaging company called IPLMI/g, `a ${industry} company`)
-      .replace(/IPLMI Packaging Company/g, `a ${industry} company`)
-      .replace(/packaging\/box converting factory/g, `${industry} factory`)
-      .replace(/packaging materials supplier/g, `${industry} supplier`)
-      .replace(/corrugated boxes/g, `${industry} products`),
-  }));
-}
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -168,7 +214,10 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
-  const [topics, setTopics] = useState<Topic[]>(TOPICS);
+  const [topics, setTopics] = useState<Topic[]>(TOPIC_TEMPLATES);
+  const [userLevel, setUserLevel] = useState<StartingLevel>('basics');
+  const [userName, setUserName] = useState('');
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const micControllerRef = useRef<RecognitionController | null>(null);
 
@@ -177,13 +226,14 @@ export default function ChatPage() {
     if (stored) setApiKey(stored);
     const history = localStorage.getItem(CHAT_HISTORY_KEY);
     if (history) {
-      try {
-        setMessages(JSON.parse(history));
-      } catch {}
+      try { setMessages(JSON.parse(history)); } catch {}
     }
     const profile = getUserProfile();
     if (profile) {
-      setTopics(buildTopics(profile.name, profile.occupation, profile.industry));
+      const level = profile.startingLevel ?? 'basics';
+      setUserLevel(level);
+      setUserName(profile.name ?? '');
+      setTopics(buildTopics(profile.name, profile.industry, level));
     }
   }, []);
 
@@ -196,6 +246,19 @@ export default function ChatPage() {
       localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages.slice(-50)));
     }
   }, [messages]);
+
+  const handleLevelChange = (level: StartingLevel) => {
+    setUserLevel(level);
+    setShowLevelPicker(false);
+    const profile = getUserProfile();
+    setTopics(buildTopics(profile?.name ?? userName, profile?.industry ?? '', level));
+    // Rebuild active topic with new level
+    if (activeTopic) {
+      const newTopics = buildTopics(profile?.name ?? userName, profile?.industry ?? '', level);
+      const rebuilt = newTopics.find((t) => t.id === activeTopic.id);
+      if (rebuilt) setActiveTopic(rebuilt);
+    }
+  };
 
   const saveApiKey = () => {
     if (!apiKeyInput.trim()) return;
@@ -213,52 +276,40 @@ export default function ChatPage() {
     setInput('');
     setLoading(true);
 
+    const currentTopic = activeTopic ?? topics[0];
+
     try {
-      const response = await fetch(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              { role: 'system', content: activeTopic?.systemPrompt || topics[0].systemPrompt },
-              ...newMessages.map((m) => ({ role: m.role, content: m.content })),
-            ],
-            temperature: 0.7,
-            max_tokens: 500,
-          }),
-        }
-      );
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: getSystemPrompt(currentTopic) },
+            ...newMessages.map((m) => ({ role: m.role, content: m.content })),
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+      });
 
       const data = await response.json();
 
       if (data.error) {
-        setMessages([
-          ...newMessages,
-          { role: 'assistant', content: `API Error: ${data.error.message}` },
-        ]);
+        setMessages([...newMessages, { role: 'assistant', content: `API Error: ${data.error.message}` }]);
         return;
       }
 
-      const assistantContent =
-        data.choices?.[0]?.message?.content || 'Sorry, I could not respond.';
-
-      setMessages([
-        ...newMessages,
-        { role: 'assistant', content: assistantContent },
-      ]);
+      const assistantContent = data.choices?.[0]?.message?.content || 'Sorry, I could not respond.';
+      setMessages([...newMessages, { role: 'assistant', content: assistantContent }]);
     } catch (error) {
-      setMessages([
-        ...newMessages,
-        {
-          role: 'assistant',
-          content: `Error: ${error instanceof Error ? error.message : 'Could not connect to Groq API. Check your API key.'}`,
-        },
-      ]);
+      setMessages([...newMessages, {
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Could not connect to Groq API. Check your API key.'}`,
+      }]);
     } finally {
       setLoading(false);
     }
@@ -274,25 +325,19 @@ export default function ChatPage() {
     setMessages([]);
     setActiveTopic(topic);
     localStorage.removeItem(CHAT_HISTORY_KEY);
-    // If the topic has a starter message, add it as the AI's first message
     if (topic.starterMessage) {
       const s = topic.starterMessage;
-      setMessages([
-        { role: 'assistant', content: `Chinese: ${s.chinese}\nPinyin: ${s.pinyin}\nEnglish: ${s.english}` },
-      ]);
+      setMessages([{ role: 'assistant', content: `Chinese: ${s.chinese}\nPinyin: ${s.pinyin}\nEnglish: ${s.english}` }]);
     }
   };
 
   const handleMicToggle = async () => {
     if (isRecording && micControllerRef.current) {
-      // Stop recording
       micControllerRef.current.stop();
       micControllerRef.current = null;
       setIsRecording(false);
       return;
     }
-
-    // Start recording
     setIsRecording(true);
     try {
       const controller = listenForChinese();
@@ -300,9 +345,7 @@ export default function ChatPage() {
       const result = await controller.promise;
       micControllerRef.current = null;
       setIsRecording(false);
-      if (result.transcript.trim()) {
-        sendMessage(result.transcript);
-      }
+      if (result.transcript.trim()) sendMessage(result.transcript);
     } catch {
       micControllerRef.current = null;
       setIsRecording(false);
@@ -340,10 +383,7 @@ export default function ChatPage() {
               Save & Start Chatting
             </button>
             {showSettings && (
-              <button
-                onClick={() => setShowSettings(false)}
-                className="mt-2 w-full rounded-lg bg-card py-2 text-sm text-muted"
-              >
+              <button onClick={() => setShowSettings(false)} className="mt-2 w-full rounded-lg bg-card py-2 text-sm text-muted">
                 Cancel
               </button>
             )}
@@ -362,24 +402,41 @@ export default function ChatPage() {
         <div className="mx-auto flex max-w-lg items-center justify-between">
           <div className="flex items-center gap-2">
             {activeTopic && (
-              <span className="text-sm">
+              <span className="text-sm font-medium">
                 {activeTopic.icon} {activeTopic.label}
               </span>
             )}
           </div>
-          <div className="flex gap-1">
-            <button
-              onClick={clearChat}
-              className="rounded-lg p-2 text-muted hover:text-foreground"
-              title="New conversation"
-            >
+          <div className="flex items-center gap-1">
+            {/* Level picker */}
+            <div className="relative">
+              <button
+                onClick={() => setShowLevelPicker(!showLevelPicker)}
+                className="flex items-center gap-1 rounded-lg bg-card px-2.5 py-1.5 text-xs font-medium text-muted hover:text-foreground"
+              >
+                {LEVEL_LABELS[userLevel]}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {showLevelPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-xl bg-card shadow-lg border border-border overflow-hidden">
+                  {(Object.entries(LEVEL_LABELS) as [StartingLevel, string][]).map(([val, label]) => (
+                    <button
+                      key={val}
+                      onClick={() => handleLevelChange(val)}
+                      className={`w-full px-3 py-2.5 text-left text-xs font-medium transition-colors ${
+                        userLevel === val ? 'bg-primary text-white' : 'hover:bg-background text-foreground'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={clearChat} className="rounded-lg p-2 text-muted hover:text-foreground" title="New conversation">
               <Trash2 className="h-4 w-4" />
             </button>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="rounded-lg p-2 text-muted hover:text-foreground"
-              title="API settings"
-            >
+            <button onClick={() => setShowSettings(true)} className="rounded-lg p-2 text-muted hover:text-foreground" title="API settings">
               <Settings className="h-4 w-4" />
             </button>
           </div>
@@ -389,14 +446,14 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-36">
         <div className="mx-auto max-w-lg space-y-4">
-          {/* Topic Selector - shown when no topic is selected */}
+          {/* Topic selector */}
           {!activeTopic && messages.length === 0 && (
             <div className="py-4">
               <div className="text-center mb-6">
                 <Bot className="mx-auto mb-3 h-10 w-10 text-muted" />
-                <p className="text-lg font-semibold">Choose a Topic</p>
+                <p className="text-lg font-semibold">Choose a Scenario</p>
                 <p className="mt-1 text-sm text-muted">
-                  Pick a scenario to practice, or start a free conversation.
+                  Pick a situation to practice, or start a free conversation.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -418,10 +475,7 @@ export default function ChatPage() {
           {messages.map((msg, i) => {
             if (msg.role === 'user') {
               return (
-                <div
-                  key={i}
-                  className="flex justify-end animate-fadeIn"
-                >
+                <div key={i} className="flex justify-end animate-fadeIn">
                   <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-white">
                     <p className="font-chinese text-base">{msg.content}</p>
                   </div>
@@ -431,25 +485,16 @@ export default function ChatPage() {
 
             const parsed = parseResponse(msg.content);
             return (
-              <div
-                key={i}
-                className="flex justify-start animate-fadeIn"
-              >
+              <div key={i} className="flex justify-start animate-fadeIn">
                 <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-card px-4 py-3">
                   {parsed.chinese ? (
                     <>
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-chinese text-lg font-bold">
-                          {parsed.chinese}
-                        </p>
+                        <p className="font-chinese text-lg font-bold">{parsed.chinese}</p>
                         <SpeakerButton text={parsed.chinese} size="sm" />
                       </div>
-                      {parsed.pinyin && (
-                        <p className="mt-1 text-sm text-muted">{parsed.pinyin}</p>
-                      )}
-                      {parsed.english && (
-                        <p className="mt-1 text-sm">{parsed.english}</p>
-                      )}
+                      {parsed.pinyin && <p className="mt-1 text-sm text-muted">{parsed.pinyin}</p>}
+                      {parsed.english && <p className="mt-1 text-sm">{parsed.english}</p>}
                       {parsed.correction && (
                         <div className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2">
                           <p className="text-xs font-medium text-amber-500">
@@ -467,9 +512,7 @@ export default function ChatPage() {
           })}
 
           {loading && (
-            <div
-              className="flex justify-start animate-fadeInOnly"
-            >
+            <div className="flex justify-start animate-fadeInOnly">
               <div className="rounded-2xl rounded-bl-md bg-card px-4 py-3">
                 <div className="flex gap-1">
                   <div className="h-2 w-2 animate-bounce rounded-full bg-muted" />
@@ -484,8 +527,13 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Input - fixed above bottom nav */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-border bg-background px-4 py-3">
+      {/* Click-outside to close level picker */}
+      {showLevelPicker && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowLevelPicker(false)} />
+      )}
+
+      {/* Input bar */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 border-t border-border bg-background px-4 py-3">
         {isRecording && (
           <div className="mx-auto max-w-lg mb-2 text-center">
             <p className="text-xs text-red-400 animate-pulse">Recording... tap mic to stop</p>
@@ -495,9 +543,7 @@ export default function ChatPage() {
           <button
             onClick={handleMicToggle}
             className={`rounded-xl px-3 py-3 transition-colors ${
-              isRecording
-                ? 'bg-red-500 text-white animate-pulse'
-                : 'bg-card text-muted hover:text-primary'
+              isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-card text-muted hover:text-primary'
             }`}
             aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
           >

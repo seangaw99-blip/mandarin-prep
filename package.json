@@ -11,8 +11,11 @@
   "dependencies": {
     "@serwist/next": "^9.5.7",
     "clsx": "^2.1.1",
+    "dexie": "^4.4.2",
+    "hanzi-writer": "^3.7.3",
     "lucide-react": "^1.7.0",
     "next": "16.2.2",
+    "pinyin-pro": "^3.28.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "serwist": "^9.5.7",

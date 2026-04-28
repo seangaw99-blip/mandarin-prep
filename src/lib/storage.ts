@@ -41,9 +41,9 @@ export function saveCardProgress(cardId: string, correct: boolean): CardProgress
   }
 
   existing.lastSeen = Date.now();
-  // Simple spaced repetition: review interval doubles with each level
-  const intervals = [0, 1, 3, 7, 14, 30]; // minutes for levels 0-5
-  existing.nextReview = Date.now() + intervals[existing.level] * 60 * 1000;
+  // Spaced repetition intervals in days (not minutes — critical fix)
+  const intervals = [0, 1, 3, 7, 16, 35]; // days for levels 0-5
+  existing.nextReview = Date.now() + intervals[existing.level] * 86_400_000;
 
   progress[cardId] = existing;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));

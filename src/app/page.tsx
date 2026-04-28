@@ -1,325 +1,271 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  BookOpen,
-  Layers,
-  Briefcase,
-  FileText,
-  MessageSquare,
-  MessageCircle,
-  Target,
-  TrendingUp,
-  ArrowRight,
-  Play,
-  Pause,
-  RotateCcw,
-  Timer,
-} from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getStats } from '@/lib/storage';
-import { getUserProfile, getGreeting, type UserProfile } from '@/lib/user-profile';
+import {
+  Flame, Zap, GraduationCap, BookOpen, MessageCircle,
+  ChevronRight, Dumbbell, PenLine, BookMarked, ArrowRight,
+} from 'lucide-react';
 import Header from '@/components/layout/header';
+import { getUserProfile, getGreeting, type UserProfile } from '@/lib/user-profile';
+import { getStreakData, getLevel, getXPToNextLevel, isStudiedToday } from '@/lib/streak';
+import { getDeckStats } from '@/lib/srs';
+import { db } from '@/lib/db';
+import { hsk1Words } from '@/data/hsk/hsk1';
+import { hsk2Words } from '@/data/hsk/hsk2';
+import { hsk3Words } from '@/data/hsk/hsk3';
 
-const quickLinks = [
-  { href: '/phrases', icon: BookOpen, label: 'Phrases', color: 'bg-blue-500' },
-  { href: '/flashcards', icon: Layers, label: 'Flashcards', color: 'bg-amber-500' },
-  { href: '/business', icon: Briefcase, label: 'Business', color: 'bg-emerald-500' },
-  { href: '/cheatsheets', icon: FileText, label: 'Cheat Sheets', color: 'bg-purple-500' },
-  { href: '/practice', icon: MessageSquare, label: 'Practice', color: 'bg-rose-500' },
-  { href: '/chat', icon: MessageCircle, label: 'AI Chat', color: 'bg-cyan-500' },
+// Seed HSK decks if needed (idempotent)
+async function ensureDecksSeeded() {
+  const count = await db.srsCards.count();
+  if (count > 0) return;
+  const DAY = 86_400_000;
+  const cards = [
+    ...hsk1Words.map((w) => ({
+      id: `hsk1:${w.id}:zh2en`,
+      deckId: 'hsk1',
+      wordId: w.id,
+      cardType: 'zh2en' as const,
+      due: Date.now(),
+      interval: 0,
+      easeFactor: 2.5,
+      repetitions: 0,
+      lapses: 0,
+      queue: 'new' as const,
+      learningStep: 0,
+    })),
+    ...hsk2Words.map((w) => ({
+      id: `hsk2:${w.id}:zh2en`,
+      deckId: 'hsk2',
+      wordId: w.id,
+      cardType: 'zh2en' as const,
+      due: Date.now() + DAY * 3,
+      interval: 0,
+      easeFactor: 2.5,
+      repetitions: 0,
+      lapses: 0,
+      queue: 'new' as const,
+      learningStep: 0,
+    })),
+    ...hsk3Words.map((w) => ({
+      id: `hsk3:${w.id}:zh2en`,
+      deckId: 'hsk3',
+      wordId: w.id,
+      cardType: 'zh2en' as const,
+      due: Date.now() + DAY * 14,
+      interval: 0,
+      easeFactor: 2.5,
+      repetitions: 0,
+      lapses: 0,
+      queue: 'new' as const,
+      learningStep: 0,
+    })),
+  ];
+  await db.srsCards.bulkPut(cards);
+}
+
+interface DashboardStats {
+  hsk1: Awaited<ReturnType<typeof getDeckStats>>;
+  hsk2: Awaited<ReturnType<typeof getDeckStats>>;
+  hsk3: Awaited<ReturnType<typeof getDeckStats>>;
+  totalDue: number;
+  savedWords: number;
+}
+
+const QUICK_ACTIONS = [
+  { href: '/dictionary', icon: BookOpen, label: 'Dictionary', color: 'bg-blue-500' },
+  { href: '/train', icon: Dumbbell, label: 'Training', color: 'bg-purple-500' },
+  { href: '/chat', icon: MessageCircle, label: 'Practice', color: 'bg-emerald-500' },
+  { href: '/grammar', icon: BookMarked, label: 'Grammar', color: 'bg-orange-500' },
+  { href: '/phrases', icon: PenLine, label: 'Phrases', color: 'bg-rose-500' },
+  { href: '/more', icon: ArrowRight, label: 'More', color: 'bg-muted' },
 ];
-
-interface StudyTask {
-  label: string;
-  href: string;
-  icon: string;
-}
-
-const studyTasks: StudyTask[] = [
-  { label: 'Flashcards: Greetings', href: '/flashcards?cat=greetings', icon: '👋' },
-  { label: 'Flashcards: Numbers & Money', href: '/flashcards?cat=numbers', icon: '🔢' },
-  { label: 'Phrases: Airport', href: '/phrases/airport', icon: '✈️' },
-  { label: 'Phrases: Taxi & Transport', href: '/phrases/taxi', icon: '🚕' },
-  { label: 'Phrases: Restaurant', href: '/phrases/restaurant', icon: '🍜' },
-  { label: 'Phrases: Hotel', href: '/phrases/hotel', icon: '🏨' },
-  { label: 'Business Vocabulary', href: '/business', icon: '📦' },
-  { label: 'Phrases: Factory Visit', href: '/phrases/factory', icon: '🏭' },
-  { label: 'Phrases: Negotiation', href: '/phrases/negotiation', icon: '💰' },
-  { label: 'Practice: Hotel Check-in', href: '/practice/dlg-1', icon: '🏨' },
-  { label: 'Practice: Ordering Food', href: '/practice/dlg-2', icon: '🍜' },
-  { label: 'Practice: Taking a Taxi', href: '/practice/dlg-3', icon: '🚕' },
-  { label: 'Practice: Factory Tour', href: '/practice/dlg-4', icon: '🏭' },
-  { label: 'Practice: Price Negotiation', href: '/practice/dlg-5', icon: '💰' },
-  { label: 'Cheat Sheet: Restaurant', href: '/cheatsheets/cs-restaurant', icon: '📋' },
-  { label: 'Cheat Sheet: Taxi', href: '/cheatsheets/cs-taxi', icon: '📋' },
-  { label: 'AI Chat Practice', href: '/chat', icon: '🤖' },
-];
-
-const POMODORO_KEY = 'mandarin-pomodoro';
-
-type PomodoroMode = 'study' | 'break';
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}
-
-function loadPomodoroStats(): { totalSessions: number; totalMinutes: number } {
-  if (typeof window === 'undefined') return { totalSessions: 0, totalMinutes: 0 };
-  try {
-    const data = localStorage.getItem(POMODORO_KEY);
-    return data ? JSON.parse(data) : { totalSessions: 0, totalMinutes: 0 };
-  } catch {
-    return { totalSessions: 0, totalMinutes: 0 };
-  }
-}
-
-function savePomodoroSession(minutes: number) {
-  const stats = loadPomodoroStats();
-  stats.totalSessions++;
-  stats.totalMinutes += minutes;
-  localStorage.setItem(POMODORO_KEY, JSON.stringify(stats));
-}
 
 export default function HomePage() {
   const router = useRouter();
-  const [stats, setStats] = useState({ totalReviewed: 0, mastered: 0, learning: 0, totalCorrect: 0, totalIncorrect: 0 });
-  const [pomodoroStats, setPomodoroStats] = useState({ totalSessions: 0, totalMinutes: 0 });
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [greeting, setGreeting] = useState({ chinese: '', pinyin: '', english: '' });
-
-  // Pomodoro state
-  const [studyDuration, setStudyDuration] = useState(25); // minutes
-  const [breakDuration] = useState(5);
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [mode, setMode] = useState<PomodoroMode>('study');
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [streak, setStreak] = useState({ currentStreak: 0, totalXP: 0, todayCardsReviewed: 0 });
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [studiedToday, setStudiedToday] = useState(false);
 
   useEffect(() => {
     const p = getUserProfile();
-    if (!p) {
-      router.push('/onboarding');
-      return;
-    }
+    if (!p) { router.push('/onboarding'); return; }
     setProfile(p);
     setGreeting(getGreeting(p));
-    setStats(getStats());
-    setPomodoroStats(loadPomodoroStats());
+    setStreak(getStreakData());
+    setStudiedToday(isStudiedToday());
+
+    ensureDecksSeeded().then(async () => {
+      const [hsk1, hsk2, hsk3] = await Promise.all([
+        getDeckStats('hsk1'),
+        getDeckStats('hsk2'),
+        getDeckStats('hsk3'),
+      ]);
+      const saved = await db.savedWords.count();
+      setStats({
+        hsk1,
+        hsk2,
+        hsk3,
+        totalDue: hsk1.due + hsk2.due + hsk3.due,
+        savedWords: saved,
+      });
+    });
   }, [router]);
 
-  const stopTimer = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setIsRunning(false);
-  }, []);
+  const level = getLevel(streak.totalXP);
+  const xpProgress = getXPToNextLevel(streak.totalXP);
+  const dailyGoal = 20;
+  const dailyProgress = Math.min(streak.todayCardsReviewed / dailyGoal, 1);
 
-  const startTimer = useCallback(() => {
-    setIsRunning(true);
-    intervalRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          stopTimer();
-          // Timer completed
-          if (mode === 'study') {
-            savePomodoroSession(studyDuration);
-            setPomodoroStats(loadPomodoroStats());
-            // Switch to break
-            setMode('break');
-            setTimeLeft(breakDuration * 60);
-          } else {
-            // Break over, back to study
-            setMode('study');
-            setTimeLeft(studyDuration * 60);
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [mode, studyDuration, breakDuration, stopTimer]);
-
-  const resetTimer = () => {
-    stopTimer();
-    setMode('study');
-    setTimeLeft(studyDuration * 60);
-  };
-
-  const toggleTimer = () => {
-    if (isRunning) {
-      stopTimer();
-    } else {
-      startTimer();
-    }
-  };
-
-  const changeDuration = (mins: number) => {
-    setStudyDuration(mins);
-    if (!isRunning && mode === 'study') {
-      setTimeLeft(mins * 60);
-    }
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  const progress = mode === 'study'
-    ? 1 - timeLeft / (studyDuration * 60)
-    : 1 - timeLeft / (breakDuration * 60);
+  const hsk1Pct = stats
+    ? Math.round(((stats.hsk1.total - stats.hsk1.new) / Math.max(stats.hsk1.total, 1)) * 100)
+    : 0;
+  const hsk2Pct = stats
+    ? Math.round(((stats.hsk2.total - stats.hsk2.new) / Math.max(stats.hsk2.total, 1)) * 100)
+    : 0;
+  const hsk3Pct = stats
+    ? Math.round(((stats.hsk3.total - stats.hsk3.new) / Math.max(stats.hsk3.total, 1)) * 100)
+    : 0;
 
   return (
-    <div className="min-h-screen">
-      <Header title="Mandarin Prep" />
+    <div className="min-h-screen overflow-x-hidden">
+      <Header title="Mandarin Hero" />
 
-      {/* Pomodoro Timer */}
-      <div className={`px-4 py-6 ${mode === 'study' ? 'bg-gradient-to-br from-primary to-red-700' : 'bg-gradient-to-br from-green-600 to-emerald-700'} text-white`}>
-        <div className="mx-auto max-w-lg text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Timer className="h-5 w-5 opacity-80" />
-            <p className="text-sm uppercase tracking-wider opacity-80">
-              {mode === 'study' ? 'Study Session' : 'Break Time'}
-            </p>
+      <div className="mx-auto max-w-lg px-4 py-5 space-y-4">
+
+        {/* Greeting */}
+        {greeting.chinese && (
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-red-700 p-5 text-white">
+            <p className="font-chinese text-2xl font-bold">{greeting.chinese}</p>
+            <p className="text-sm opacity-70 mt-1">{greeting.pinyin}</p>
+            <p className="text-sm opacity-90 mt-0.5">{greeting.english}</p>
           </div>
+        )}
 
-          {/* Timer display */}
-          <p className="text-6xl font-bold font-mono tracking-wider my-3">
-            {formatTime(timeLeft)}
-          </p>
+        {/* Streak + XP */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className={`rounded-2xl p-4 text-center ${studiedToday ? 'bg-orange-500/10' : 'bg-card'}`}>
+            <Flame className={`h-6 w-6 mx-auto mb-1 ${studiedToday ? 'text-orange-500' : 'text-muted'}`} />
+            <p className={`text-2xl font-bold ${studiedToday ? 'text-orange-500' : 'text-foreground'}`}>
+              {streak.currentStreak}
+            </p>
+            <p className="text-xs text-muted">Day streak</p>
+          </div>
+          <div className="rounded-2xl bg-card p-4 text-center">
+            <Zap className="h-6 w-6 mx-auto mb-1 text-secondary" />
+            <p className="text-2xl font-bold text-secondary">{streak.totalXP}</p>
+            <p className="text-xs text-muted">Total XP</p>
+          </div>
+          <div className="rounded-2xl bg-card p-4 text-center">
+            <GraduationCap className="h-6 w-6 mx-auto mb-1 text-primary" />
+            <p className="text-2xl font-bold text-primary">{level}</p>
+            <p className="text-xs text-muted">Level</p>
+          </div>
+        </div>
 
-          {/* Progress bar */}
-          <div className="w-full max-w-xs mx-auto h-1.5 bg-white/20 rounded-full mb-4">
+        {/* XP progress bar */}
+        <div>
+          <div className="flex justify-between text-xs text-muted mb-1">
+            <span>Lv {level}</span>
+            <span>{xpProgress.current} / {xpProgress.needed} XP to Lv {level + 1}</span>
+          </div>
+          <div className="h-2 bg-card rounded-full">
             <div
-              className="h-full bg-white/80 rounded-full transition-all duration-1000"
-              style={{ width: `${progress * 100}%` }}
+              className="h-full bg-secondary rounded-full transition-all duration-500"
+              style={{ width: `${xpProgress.progress * 100}%` }}
             />
           </div>
-
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <button
-              onClick={resetTimer}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
-            <button
-              onClick={toggleTimer}
-              className="w-14 h-14 flex items-center justify-center rounded-full bg-white text-red-600 hover:bg-white/90 transition-colors"
-            >
-              {isRunning ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 ml-0.5" />}
-            </button>
-            <div className="w-10 h-10" /> {/* Spacer for alignment */}
-          </div>
-
-          {/* Duration presets */}
-          {!isRunning && mode === 'study' && (
-            <div className="flex items-center justify-center gap-2">
-              {[15, 25, 45].map((mins) => (
-                <button
-                  key={mins}
-                  onClick={() => changeDuration(mins)}
-                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
-                    studyDuration === mins ? 'bg-white text-red-600 font-semibold' : 'bg-white/20'
-                  }`}
-                >
-                  {mins}m
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Session stats */}
-          {pomodoroStats.totalSessions > 0 && (
-            <p className="text-xs opacity-60 mt-2">
-              {pomodoroStats.totalSessions} sessions completed &middot; {pomodoroStats.totalMinutes} min studied
-            </p>
-          )}
         </div>
-      </div>
 
-      <div className="mx-auto max-w-lg space-y-6 px-4 py-6">
-        {/* Greeting & CTA */}
-        {greeting.chinese && (
-          <Link href="/flashcards">
-            <section className="rounded-xl bg-card p-4 active:scale-[0.98] transition-transform">
-              <p className="font-chinese text-2xl font-bold">{greeting.chinese}</p>
-              <p className="text-sm text-muted mt-1">{greeting.pinyin}</p>
-              <p className="text-sm mt-1">{greeting.english}</p>
-              <p className="text-xs text-primary font-semibold mt-2">Start a flashcard session →</p>
-            </section>
+        {/* Today's goal + start session */}
+        <div className="rounded-2xl bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold">Today&apos;s Goal</h2>
+              <p className="text-xs text-muted">{streak.todayCardsReviewed} / {dailyGoal} cards</p>
+            </div>
+            {stats && (
+              <span className="text-xs font-medium text-primary">
+                {stats.totalDue} due now
+              </span>
+            )}
+          </div>
+          <div className="h-2 bg-background rounded-full mb-4">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${dailyProgress >= 1 ? 'bg-success' : 'bg-primary'}`}
+              style={{ width: `${dailyProgress * 100}%` }}
+            />
+          </div>
+          <Link href="/study">
+            <button className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-white flex items-center justify-center gap-2">
+              <GraduationCap className="h-5 w-5" />
+              {dailyProgress >= 1 ? 'Keep Going!' : 'Start Study Session'}
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </Link>
+        </div>
+
+        {/* HSK Progress */}
+        {stats && (
+          <div className="rounded-2xl bg-card p-5">
+            <h2 className="font-semibold mb-3">Curriculum Progress</h2>
+            <div className="space-y-3">
+              {[
+                { label: 'HSK 1', pct: hsk1Pct, total: stats.hsk1.total, mature: stats.hsk1.mature },
+                { label: 'HSK 2', pct: hsk2Pct, total: stats.hsk2.total, mature: stats.hsk2.mature },
+                { label: 'HSK 3', pct: hsk3Pct, total: stats.hsk3.total, mature: stats.hsk3.mature },
+              ].map((deck) => (
+                <div key={deck.label}>
+                  <div className="flex justify-between text-xs text-muted mb-1">
+                    <span className="font-medium text-foreground">{deck.label}</span>
+                    <span>{deck.pct}% started · {deck.mature} mature</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full">
+                    <div
+                      className="h-full bg-primary/70 rounded-full transition-all"
+                      style={{ width: `${deck.pct}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted pt-1">HSK 4–6 coming soon</p>
+            </div>
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div>
+          <h2 className="font-semibold mb-3">Quick Access</h2>
+          <div className="grid grid-cols-3 gap-2">
+            {QUICK_ACTIONS.map((a) => (
+              <Link key={a.href} href={a.href}>
+                <div className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 active:scale-95 transition-transform">
+                  <div className={`rounded-full ${a.color} p-3`}>
+                    <a.icon className="h-5 w-5 text-white" />
+                  </div>
+                  <span className="text-xs font-medium">{a.label}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Saved words shortcut */}
+        {stats && stats.savedWords > 0 && (
+          <Link href="/dictionary">
+            <div className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 active:scale-[0.98] transition-transform">
+              <BookMarked className="h-5 w-5 text-secondary shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Saved Words</p>
+                <p className="text-xs text-muted">{stats.savedWords} words bookmarked</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted" />
+            </div>
           </Link>
         )}
-
-        <div className="h-2" />
-
-        {/* Suggested Study Tasks */}
-        <section>
-          <div className="mb-3 flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Study Tasks</h2>
-          </div>
-          <div className="space-y-2">
-            {studyTasks.slice(0, 5).map((task, i) => (
-              <Link key={i} href={task.href}>
-                <div className="flex items-center gap-3 rounded-lg bg-card p-3 mb-2 active:scale-[0.98] transition-transform">
-                  <span className="text-xl shrink-0">{task.icon}</span>
-                  <span className="text-sm flex-1">{task.label}</span>
-                  <ArrowRight className="h-4 w-4 text-muted shrink-0" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        {/* Quick Stats */}
-        {stats.totalReviewed > 0 && (
-          <section>
-            <div className="mb-3 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Your Progress</h2>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg bg-card p-3 text-center">
-                <p className="text-2xl font-bold text-primary">{stats.totalReviewed}</p>
-                <p className="text-xs text-muted">Reviewed</p>
-              </div>
-              <div className="rounded-lg bg-card p-3 text-center">
-                <p className="text-2xl font-bold text-success">{stats.mastered}</p>
-                <p className="text-xs text-muted">Mastered</p>
-              </div>
-              <div className="rounded-lg bg-card p-3 text-center">
-                <p className="text-2xl font-bold text-secondary">{stats.learning}</p>
-                <p className="text-xs text-muted">Learning</p>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Quick Links */}
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">Study Sections</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {quickLinks.map((link) => (
-              <Link key={link.href} href={link.href}>
-                <div className="flex flex-col items-center gap-2 rounded-xl bg-card p-4 active:scale-95 transition-transform">
-                  <div className={`rounded-full ${link.color} p-3`}>
-                    <link.icon className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="text-xs font-medium">{link.label}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
 
       </div>
     </div>
