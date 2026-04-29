@@ -75,7 +75,7 @@ function CedictRow({ entry }: { entry: CedictEntry }) {
 const FEATURED = [
   { label: 'HSK 1 Essentials', filter: 1, icon: '🌱' },
   { label: 'HSK 2 Vocabulary', filter: 2, icon: '📗' },
-  { label: 'Business & Packaging', filter: 0, icon: '📦' },
+  { label: 'Business & Packaging', filter: -1, icon: '📦' },
 ];
 
 export default function DictionaryPage() {
@@ -106,7 +106,7 @@ export default function DictionaryPage() {
       // Browse mode: show all entries for the active level filter
       if (levelFilter === null) {
         setResults([]);
-      } else if (levelFilter === 0) {
+      } else if (levelFilter === -1) {
         setResults(getAllEntries().filter((e) => e.source === 'business'));
       } else {
         setResults(getLevelEntries(levelFilter));
@@ -117,7 +117,7 @@ export default function DictionaryPage() {
 
     const r = search(q);
     const filtered = levelFilter !== null
-      ? r.filter((e) => e.level === levelFilter || (levelFilter === 0 && e.source === 'business'))
+      ? r.filter((e) => e.level === levelFilter || (levelFilter === -1 && e.source === 'business'))
       : r;
     setResults(filtered);
 
@@ -192,7 +192,7 @@ export default function DictionaryPage() {
             {!hasQuery && levelFilter !== null && (
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted">
-                  {results.length} {levelFilter === 0 ? 'business' : `HSK ${levelFilter}`} word{results.length === 1 ? '' : 's'}
+                  {results.length} {levelFilter === -1 ? 'business' : `HSK ${levelFilter}`} word{results.length === 1 ? '' : 's'}
                 </p>
                 <button
                   onClick={() => setLevelFilter(null)}
@@ -267,7 +267,7 @@ export default function DictionaryPage() {
                 {FEATURED.map((f) => (
                   <button
                     key={f.label}
-                    onClick={() => setLevelFilter(f.filter === 0 ? null : f.filter)}
+                    onClick={() => setLevelFilter(f.filter)}
                     className="flex w-full items-center gap-3 rounded-xl bg-card px-4 py-3"
                   >
                     <span className="text-2xl">{f.icon}</span>
