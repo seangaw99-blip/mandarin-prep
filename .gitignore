@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# CC-CEDICT raw source (regenerate via scripts/build-cedict.mjs)
+/cedict-raw.js
+/verify-screenshots/

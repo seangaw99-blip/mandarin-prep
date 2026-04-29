@@ -5,6 +5,7 @@ import { Search, X, BookMarked, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import Header from '@/components/layout/header';
 import { search } from '@/lib/dictionary';
+import { loadCedict, searchCedict, isLoaded as cedictLoaded, type CedictEntry } from '@/lib/cedict';
 import type { DictEntry } from '@/lib/db';
 
 const HISTORY_KEY = 'dict-search-history';
@@ -54,6 +55,23 @@ function ResultRow({ entry }: { entry: DictEntry }) {
   );
 }
 
+function CedictRow({ entry }: { entry: CedictEntry }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-card px-4 py-3">
+      <span className="font-chinese text-2xl font-bold w-12 shrink-0 text-center">
+        {entry.simplified}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-muted">{entry.pinyin}</p>
+        <p className="text-sm">{entry.english}</p>
+      </div>
+      <span className="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium bg-muted/20 text-muted">
+        CEDICT
+      </span>
+    </div>
+  );
+}
+
 const FEATURED = [
   { label: 'HSK 1 Essentials', filter: 1, icon: '🌱' },
   { label: 'HSK 2 Vocabulary', filter: 2, icon: '📗' },
@@ -63,6 +81,8 @@ const FEATURED = [
 export default function DictionaryPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<DictEntry[]>([]);
+  const [cedictResults, setCedictResults] = useState<CedictEntry[]>([]);
+  const [cedictReady, setCedictReady] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,11 +90,19 @@ export default function DictionaryPage() {
   useEffect(() => {
     setHistory(getHistory());
     inputRef.current?.focus();
+    if (!cedictLoaded()) {
+      loadCedict().then(() => setCedictReady(true)).catch((err) => {
+        console.warn('CC-CEDICT failed to load:', err);
+      });
+    } else {
+      setCedictReady(true);
+    }
   }, []);
 
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
+      setCedictResults([]);
       return;
     }
     const r = search(query);
@@ -82,7 +110,15 @@ export default function DictionaryPage() {
       ? r.filter((e) => e.level === levelFilter || (levelFilter === 0 && e.source === 'business'))
       : r;
     setResults(filtered);
-  }, [query, levelFilter]);
+
+    if (cedictReady && levelFilter === null) {
+      const seenSimplified = new Set(filtered.map((e) => e.simplified));
+      const cedict = searchCedict(query, 60).filter((e) => !seenSimplified.has(e.simplified));
+      setCedictResults(cedict);
+    } else {
+      setCedictResults([]);
+    }
+  }, [query, levelFilter, cedictReady]);
 
   const handleSubmit = () => {
     if (query.trim()) addToHistory(query.trim());
@@ -143,11 +179,28 @@ export default function DictionaryPage() {
         {/* Results */}
         {hasQuery && (
           <>
-            {results.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted">No results for &ldquo;{query}&rdquo;</p>
+            {results.length === 0 && cedictResults.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted">
+                {cedictReady ? `No results for "${query}"` : `Loading dictionary…`}
+              </p>
             ) : (
               <div className="space-y-2">
-                {results.map((e) => <ResultRow key={e.id} entry={e} />)}
+                {results.length > 0 && (
+                  <>
+                    {results.length > 0 && cedictResults.length > 0 && (
+                      <h3 className="text-xs font-semibold text-muted uppercase tracking-wide pt-1">Curriculum</h3>
+                    )}
+                    {results.map((e) => <ResultRow key={e.id} entry={e} />)}
+                  </>
+                )}
+                {cedictResults.length > 0 && (
+                  <>
+                    {results.length > 0 && (
+                      <h3 className="text-xs font-semibold text-muted uppercase tracking-wide pt-3">Full Dictionary</h3>
+                    )}
+                    {cedictResults.map((e) => <CedictRow key={e.simplified + '|' + e.pinyin} entry={e} />)}
+                  </>
+                )}
               </div>
             )}
           </>
