@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, X, BookMarked, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import Header from '@/components/layout/header';
-import { search } from '@/lib/dictionary';
+import { search, getLevelEntries, getAllEntries } from '@/lib/dictionary';
 import { loadCedict, searchCedict, isLoaded as cedictLoaded, type CedictEntry } from '@/lib/cedict';
 import type { DictEntry } from '@/lib/db';
 
@@ -100,12 +100,22 @@ export default function DictionaryPage() {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
+    const q = query.trim();
+
+    if (!q) {
+      // Browse mode: show all entries for the active level filter
+      if (levelFilter === null) {
+        setResults([]);
+      } else if (levelFilter === 0) {
+        setResults(getAllEntries().filter((e) => e.source === 'business'));
+      } else {
+        setResults(getLevelEntries(levelFilter));
+      }
       setCedictResults([]);
       return;
     }
-    const r = search(query);
+
+    const r = search(q);
     const filtered = levelFilter !== null
       ? r.filter((e) => e.level === levelFilter || (levelFilter === 0 && e.source === 'business'))
       : r;
@@ -113,7 +123,7 @@ export default function DictionaryPage() {
 
     if (cedictReady && levelFilter === null) {
       const seenSimplified = new Set(filtered.map((e) => e.simplified));
-      const cedict = searchCedict(query, 60).filter((e) => !seenSimplified.has(e.simplified));
+      const cedict = searchCedict(q, 60).filter((e) => !seenSimplified.has(e.simplified));
       setCedictResults(cedict);
     } else {
       setCedictResults([]);
@@ -176,18 +186,33 @@ export default function DictionaryPage() {
       </div>
 
       <div className="mx-auto max-w-lg px-4 py-4 space-y-4">
-        {/* Results */}
-        {hasQuery && (
+        {/* Results — shown when there's a query OR a level filter is active */}
+        {(hasQuery || levelFilter !== null) && (
           <>
+            {!hasQuery && levelFilter !== null && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted">
+                  {results.length} {levelFilter === 0 ? 'business' : `HSK ${levelFilter}`} word{results.length === 1 ? '' : 's'}
+                </p>
+                <button
+                  onClick={() => setLevelFilter(null)}
+                  className="text-xs text-muted underline"
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
             {results.length === 0 && cedictResults.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted">
-                {cedictReady ? `No results for "${query}"` : `Loading dictionary…`}
+                {hasQuery
+                  ? (cedictReady ? `No results for "${query}"` : `Loading dictionary…`)
+                  : 'No words at this level yet.'}
               </p>
             ) : (
               <div className="space-y-2">
                 {results.length > 0 && (
                   <>
-                    {results.length > 0 && cedictResults.length > 0 && (
+                    {hasQuery && results.length > 0 && cedictResults.length > 0 && (
                       <h3 className="text-xs font-semibold text-muted uppercase tracking-wide pt-1">Curriculum</h3>
                     )}
                     {results.map((e) => <ResultRow key={e.id} entry={e} />)}
@@ -207,7 +232,7 @@ export default function DictionaryPage() {
         )}
 
         {/* Empty state */}
-        {!hasQuery && (
+        {!hasQuery && levelFilter === null && (
           <>
             {/* Recent searches */}
             {history.length > 0 && (
