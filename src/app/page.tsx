@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Flame, Zap, GraduationCap, BookOpen, MessageCircle,
-  ChevronRight, Dumbbell, PenLine, BookMarked, ArrowRight,
+  ChevronRight, Dumbbell, BookMarked, ArrowRight, Map, CheckCircle2, Circle,
+  Headphones, Mic, Music,
 } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { getUserProfile, getGreeting, type UserProfile } from '@/lib/user-profile';
@@ -15,6 +16,8 @@ import { db } from '@/lib/db';
 import { hsk1Words } from '@/data/hsk/hsk1';
 import { hsk2Words } from '@/data/hsk/hsk2';
 import { hsk3Words } from '@/data/hsk/hsk3';
+import { getDailyTasks, getDayFocusLabel, markTaskDoneToday, type DailyTask } from '@/lib/curriculum';
+import type { Unit } from '@/data/curriculum';
 
 // Seed HSK decks if needed (idempotent)
 async function ensureDecksSeeded() {
@@ -74,13 +77,23 @@ interface DashboardStats {
 }
 
 const QUICK_ACTIONS = [
+  { href: '/lessons', icon: Map, label: 'Lessons', color: 'bg-primary' },
   { href: '/dictionary', icon: BookOpen, label: 'Dictionary', color: 'bg-blue-500' },
   { href: '/train', icon: Dumbbell, label: 'Training', color: 'bg-purple-500' },
   { href: '/chat', icon: MessageCircle, label: 'Practice', color: 'bg-emerald-500' },
   { href: '/grammar', icon: BookMarked, label: 'Grammar', color: 'bg-orange-500' },
-  { href: '/phrases', icon: PenLine, label: 'Phrases', color: 'bg-rose-500' },
   { href: '/more', icon: ArrowRight, label: 'More', color: 'bg-muted' },
 ];
+
+const TASK_ICON: Record<DailyTask['type'], React.ComponentType<{ className?: string }>> = {
+  vocab: BookOpen,
+  grammar: BookMarked,
+  listening: Headphones,
+  dialogue: MessageCircle,
+  reading: BookOpen,
+  speaking: Mic,
+  tones: Music,
+};
 
 export default function HomePage() {
   const router = useRouter();
@@ -89,6 +102,21 @@ export default function HomePage() {
   const [streak, setStreak] = useState({ currentStreak: 0, totalXP: 0, todayCardsReviewed: 0 });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [studiedToday, setStudiedToday] = useState(false);
+  const [dailyUnit, setDailyUnit] = useState<Unit | null>(null);
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
+
+  const refreshDailyTasks = async () => {
+    const { unit, tasks } = await getDailyTasks();
+    setDailyUnit(unit);
+    setDailyTasks(tasks);
+  };
+
+  const handleTaskClick = async (task: DailyTask) => {
+    if (dailyUnit) {
+      await markTaskDoneToday(task.id, dailyUnit.id);
+    }
+    router.push(task.href);
+  };
 
   useEffect(() => {
     const p = getUserProfile();
@@ -112,6 +140,7 @@ export default function HomePage() {
         totalDue: hsk1.due + hsk2.due + hsk3.due,
         savedWords: saved,
       });
+      await refreshDailyTasks();
     });
   }, [router]);
 
@@ -180,32 +209,74 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Today's goal + start session */}
-        <div className="rounded-2xl bg-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="font-semibold">Today&apos;s Goal</h2>
-              <p className="text-xs text-muted">{streak.todayCardsReviewed} / {dailyGoal} cards</p>
+        {/* Today's Lesson */}
+        {dailyUnit && (
+          <div className="rounded-2xl bg-card p-5">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-semibold">Today&apos;s Lesson</h2>
+              <span className="text-xs font-medium text-primary">{getDayFocusLabel()}</span>
             </div>
-            {stats && (
-              <span className="text-xs font-medium text-primary">
-                {stats.totalDue} due now
-              </span>
-            )}
+            <Link href={`/lessons/${dailyUnit.id}`}>
+              <p className="text-sm text-muted mb-3 hover:text-foreground transition-colors">
+                {dailyUnit.title} · {dailyTasks.filter((t) => t.done).length}/{dailyTasks.length} done
+              </p>
+            </Link>
+            <div className="space-y-2 mb-3">
+              {dailyTasks.map((t) => {
+                const Icon = TASK_ICON[t.type];
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => handleTaskClick(t)}
+                    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                      t.done ? 'bg-success/5' : 'bg-background hover:bg-background/70'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 shrink-0 ${t.done ? 'text-success' : 'text-muted'}`} />
+                    <span className={`flex-1 text-sm truncate ${t.done ? 'line-through text-muted' : ''}`}>
+                      {t.label}
+                    </span>
+                    <span className="text-xs text-muted shrink-0">{t.estMinutes}m</span>
+                    {t.done
+                      ? <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                      : <Circle className="h-4 w-4 text-muted shrink-0" />
+                    }
+                  </button>
+                );
+              })}
+            </div>
+            <div className="h-2 bg-background rounded-full mb-3">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${dailyProgress >= 1 ? 'bg-success' : 'bg-primary'}`}
+                style={{ width: `${dailyTasks.length > 0
+                  ? (dailyTasks.filter((t) => t.done).length / dailyTasks.length) * 100
+                  : 0}%` }}
+              />
+            </div>
+            <Link href="/study">
+              <button className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white flex items-center justify-center gap-2">
+                <GraduationCap className="h-5 w-5" />
+                Start Flashcards
+                {stats && stats.totalDue > 0 && (
+                  <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                    {stats.totalDue} due
+                  </span>
+                )}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </Link>
           </div>
-          <div className="h-2 bg-background rounded-full mb-4">
+        )}
+
+        {/* Daily streak goal — small */}
+        <div className="flex items-center gap-3 px-1">
+          <div className="flex-1 h-1.5 bg-card rounded-full">
             <div
               className={`h-full rounded-full transition-all duration-500 ${dailyProgress >= 1 ? 'bg-success' : 'bg-primary'}`}
               style={{ width: `${dailyProgress * 100}%` }}
             />
           </div>
-          <Link href="/study">
-            <button className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-white flex items-center justify-center gap-2">
-              <GraduationCap className="h-5 w-5" />
-              {dailyProgress >= 1 ? 'Keep Going!' : 'Start Study Session'}
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </Link>
+          <span className="text-xs text-muted shrink-0">{streak.todayCardsReviewed}/{dailyGoal} cards</span>
         </div>
 
         {/* HSK Progress */}

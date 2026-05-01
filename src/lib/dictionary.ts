@@ -120,8 +120,35 @@ function isChineseChar(s: string): boolean {
   return /[一-鿿㐀-䶿]/.test(s);
 }
 
-function isPinyinInput(s: string): boolean {
-  return /^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ\s]+$/i.test(s.trim());
+function hasPinyinDiacritic(s: string): boolean {
+  return /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/i.test(s);
+}
+
+function searchEnglishInto(q: string, entries: DictEntry[], results: Map<string, DictEntry>) {
+  const ql = q.toLowerCase();
+  for (const e of entries) {
+    if (e.english.toLowerCase().startsWith(ql)) results.set(e.id, e);
+  }
+  for (const e of entries) {
+    if (!results.has(e.id) && e.english.toLowerCase().includes(ql)) results.set(e.id, e);
+  }
+  for (const e of entries) {
+    if (!results.has(e.id) && e.allDefinitions.some((d) => d.toLowerCase().includes(ql))) {
+      results.set(e.id, e);
+    }
+  }
+}
+
+function searchPinyinInto(q: string, results: Map<string, DictEntry>) {
+  const norm = normPinyin(q);
+  if (!norm) return;
+  const idx = getPinyinIndex();
+  for (const e of idx.get(norm) ?? []) results.set(e.id, e);
+  for (const [key, list] of idx) {
+    if (key !== norm && key.startsWith(norm)) {
+      for (const e of list) if (!results.has(e.id)) results.set(e.id, e);
+    }
+  }
 }
 
 export function search(query: string, limit = 30): DictEntry[] {
@@ -145,35 +172,14 @@ export function search(query: string, limit = 30): DictEntry[] {
         if (!results.has(e.id)) results.set(e.id, e);
       }
     }
-  } else if (isPinyinInput(q)) {
-    // Pinyin input: normalize and search
-    const norm = normPinyin(q);
-    const idx = getPinyinIndex();
-    for (const e of idx.get(norm) ?? []) results.set(e.id, e);
-    for (const [key, list] of idx) {
-      if (key !== norm && key.startsWith(norm)) {
-        for (const e of list) if (!results.has(e.id)) results.set(e.id, e);
-      }
-    }
-    for (const [key, list] of idx) {
-      if (!key.startsWith(norm) && key.includes(norm)) {
-        for (const e of list) if (!results.has(e.id)) results.set(e.id, e);
-      }
-    }
+  } else if (hasPinyinDiacritic(q)) {
+    // Tone marks present — pinyin only
+    searchPinyinInto(q, results);
   } else {
-    // English input
-    const ql = q.toLowerCase();
-    for (const e of entries) {
-      if (e.english.toLowerCase().startsWith(ql)) results.set(e.id, e);
-    }
-    for (const e of entries) {
-      if (!results.has(e.id) && e.english.toLowerCase().includes(ql)) results.set(e.id, e);
-    }
-    for (const e of entries) {
-      if (!results.has(e.id) && e.allDefinitions.some((d) => d.toLowerCase().includes(ql))) {
-        results.set(e.id, e);
-      }
-    }
+    // Plain ASCII — try English first, then pinyin
+    // ("hello" → 你好 via English; "nihao" → 你好 via pinyin)
+    searchEnglishInto(q, entries, results);
+    searchPinyinInto(q, results);
   }
 
   return Array.from(results.values()).slice(0, limit);

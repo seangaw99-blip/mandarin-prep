@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Music, PenLine, Headphones } from 'lucide-react';
+import { ArrowLeft, Music, Headphones } from 'lucide-react';
 
 interface TrainMode {
   href: string;
@@ -25,15 +25,6 @@ const TRAIN_MODES: TrainMode[] = [
     desc: 'Hear words, identify tone 1–4. Build pitch perception fast.',
     badge: 'Core skill',
     badgeColor: 'bg-purple-100 text-purple-700',
-  },
-  {
-    href: '/train/hanzi',
-    icon: PenLine,
-    color: 'bg-indigo-500',
-    title: 'Stroke Order',
-    desc: 'Watch animated stroke order, then practice writing from memory.',
-    badge: 'Characters',
-    badgeColor: 'bg-indigo-100 text-indigo-700',
   },
   {
     href: '/train/listening',

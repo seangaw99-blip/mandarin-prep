@@ -37,8 +37,8 @@ function isChineseChar(s: string): boolean {
   return /[一-鿿㐀-䶿]/.test(s);
 }
 
-function isPinyinInput(s: string): boolean {
-  return /^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ\s]+$/i.test(s.trim());
+function hasPinyinDiacritic(s: string): boolean {
+  return /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/i.test(s);
 }
 
 function normPinyin(py: string): string {
@@ -74,8 +74,14 @@ export function searchCedict(query: string, limit = 50): CedictEntry[] {
         if (results.length >= limit) break;
       }
     }
-  } else if (isPinyinInput(q)) {
-    const norm = normPinyin(q);
+    return results;
+  }
+
+  const ql = q.toLowerCase();
+  const norm = normPinyin(q);
+
+  if (hasPinyinDiacritic(q)) {
+    // Tone marks present — pinyin only
     for (const e of _entries) {
       if (e.pinyinNorm === norm) push(e);
       if (results.length >= limit) break;
@@ -86,17 +92,29 @@ export function searchCedict(query: string, limit = 50): CedictEntry[] {
         if (results.length >= limit) break;
       }
     }
-  } else {
-    const ql = q.toLowerCase();
+    return results;
+  }
+
+  // Plain ASCII — try English first, then pinyin
+  // ("hello" → 你好 via English; "nihao" → 你好 via pinyin)
+  for (const e of _entries) {
+    if (e.english.toLowerCase().startsWith(ql)) push(e);
+    if (results.length >= limit) break;
+  }
+  if (results.length < limit) {
     for (const e of _entries) {
-      if (e.english.toLowerCase().startsWith(ql)) push(e);
+      if (!e.english.toLowerCase().startsWith(ql) && e.english.toLowerCase().includes(ql)) push(e);
       if (results.length >= limit) break;
     }
-    if (results.length < limit) {
-      for (const e of _entries) {
-        if (!e.english.toLowerCase().startsWith(ql) && e.english.toLowerCase().includes(ql)) push(e);
-        if (results.length >= limit) break;
-      }
+  }
+  if (results.length < limit && norm) {
+    for (const e of _entries) {
+      if (e.pinyinNorm === norm) push(e);
+      if (results.length >= limit) break;
+    }
+    for (const e of _entries) {
+      if (e.pinyinNorm !== norm && e.pinyinNorm.startsWith(norm)) push(e);
+      if (results.length >= limit) break;
     }
   }
 

@@ -2,8 +2,74 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ArrowLeft, User, Target, Gauge, Clock, Building2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, User, Target, Gauge, Clock, Building2, Check } from 'lucide-react';
 import { saveUserProfile, type LearningGoal, type StartingLevel } from '@/lib/user-profile';
+
+interface QuizQuestion {
+  prompt: string;
+  options: { label: string; correct: boolean }[];
+  difficulty: 'beginner' | 'basics' | 'hsk1' | 'hsk2plus';
+}
+
+const PLACEMENT_QUIZ: QuizQuestion[] = [
+  {
+    prompt: 'What does 你好 mean?',
+    options: [
+      { label: 'Hello',   correct: true  },
+      { label: 'Goodbye', correct: false },
+      { label: 'Thanks',  correct: false },
+      { label: 'Sorry',   correct: false },
+    ],
+    difficulty: 'beginner',
+  },
+  {
+    prompt: 'How do you say "Thank you" in Mandarin?',
+    options: [
+      { label: '你好',   correct: false },
+      { label: '谢谢',   correct: true  },
+      { label: '再见',   correct: false },
+      { label: '对不起', correct: false },
+    ],
+    difficulty: 'basics',
+  },
+  {
+    prompt: 'What does 我是学生 mean?',
+    options: [
+      { label: 'I am a student', correct: true  },
+      { label: 'I am a teacher', correct: false },
+      { label: 'I am Chinese',   correct: false },
+      { label: 'I have a book',  correct: false },
+    ],
+    difficulty: 'hsk1',
+  },
+  {
+    prompt: 'Which sentence means "How much does it cost?"',
+    options: [
+      { label: '在哪里？',   correct: false },
+      { label: '你叫什么？', correct: false },
+      { label: '多少钱？',   correct: true  },
+      { label: '几点了？',   correct: false },
+    ],
+    difficulty: 'hsk1',
+  },
+  {
+    prompt: 'What does 因为下雨，所以我没去 mean?',
+    options: [
+      { label: 'I went because it rained',         correct: false },
+      { label: 'It was raining when I left',       correct: false },
+      { label: "Because it rained, I didn't go",   correct: true  },
+      { label: 'I want to go but it might rain',   correct: false },
+    ],
+    difficulty: 'hsk2plus',
+  },
+];
+
+function levelFromScore(correct: number): StartingLevel {
+  if (correct <= 0) return 'beginner';
+  if (correct <= 2) return 'basics';
+  if (correct <= 3) return 'hsk1';
+  return 'hsk2plus';
+}
 
 const GOALS: { value: LearningGoal; label: string; emoji: string; desc: string }[] = [
   { value: 'travel',  label: 'Travel',         emoji: '✈️',  desc: 'Survive and thrive while traveling in China' },
@@ -13,12 +79,12 @@ const GOALS: { value: LearningGoal; label: string; emoji: string; desc: string }
   { value: 'fluency', label: 'Full Fluency',   emoji: '🌏',  desc: 'Zero to conversational fluency over time' },
 ];
 
-const LEVELS: { value: StartingLevel; label: string; desc: string }[] = [
-  { value: 'beginner',  label: 'Complete beginner',     desc: 'I know nothing or almost nothing yet' },
-  { value: 'basics',    label: 'Know the basics',       desc: 'I know a few words: 你好, 谢谢, numbers' },
-  { value: 'hsk1',      label: 'Around HSK 1–2',        desc: 'I can handle simple phrases and conversations' },
-  { value: 'hsk2plus',  label: 'HSK 2+ / intermediate', desc: 'I have solid foundations and want to go deeper' },
-];
+const LEVEL_LABELS: Record<StartingLevel, string> = {
+  beginner: 'Complete beginner',
+  basics:   'Know the basics',
+  hsk1:     'Around HSK 1–2',
+  hsk2plus: 'HSK 2+ / intermediate',
+};
 
 const DAILY_GOALS = [
   { mins: 5  as const, label: '5 min',  desc: 'Light — a quick daily habit' },
@@ -42,19 +108,39 @@ export default function OnboardingPage() {
   const [name, setName] = useState('');
   const [goal, setGoal] = useState<LearningGoal | ''>('');
   const [level, setLevel] = useState<StartingLevel | ''>('');
+  const [quizAnswers, setQuizAnswers] = useState<(number | null)[]>(
+    Array(PLACEMENT_QUIZ.length).fill(null)
+  );
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [dailyMins, setDailyMins] = useState<5 | 10 | 15 | 20 | 0>(0);
   const [industry, setIndustry] = useState('');
   const [customIndustry, setCustomIndustry] = useState('');
+
+  const quizCorrect = PLACEMENT_QUIZ.reduce((acc, q, i) => {
+    const idx = quizAnswers[i];
+    if (idx === null) return acc;
+    return acc + (q.options[idx].correct ? 1 : 0);
+  }, 0);
 
   const canProceed = () => {
     switch (step) {
       case 0: return name.trim().length > 0;
       case 1: return goal !== '';
-      case 2: return level !== '';
+      case 2: return level !== '';   // Level is set via quiz submit OR "I'm a beginner" shortcut
       case 3: return dailyMins > 0;
       case 4: return industry.length > 0 && (industry !== 'Other' || customIndustry.trim().length > 0);
       default: return false;
     }
+  };
+
+  const submitQuiz = () => {
+    setLevel(levelFromScore(quizCorrect));
+    setQuizSubmitted(true);
+  };
+
+  const skipQuizAsBeginner = () => {
+    setLevel('beginner');
+    setQuizSubmitted(true);
   };
 
   const handleNext = () => {
@@ -138,31 +224,84 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 2: Level */}
-          {step === 2 && (
+          {/* Step 2: Placement Quiz */}
+          {step === 2 && !quizSubmitted && (
             <div className="space-y-4 animate-fadeIn">
               <div className="text-center">
                 <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
                   <Gauge className="h-8 w-8 text-blue-500" />
                 </div>
-                <h1 className="text-2xl font-bold">Where are you now?</h1>
-                <p className="text-sm text-muted mt-2">Your current Mandarin level</p>
+                <h1 className="text-2xl font-bold">Quick placement check</h1>
+                <p className="text-sm text-muted mt-2">5 quick questions — we&apos;ll start you at the right level</p>
+                <button
+                  onClick={skipQuizAsBeginner}
+                  className="mt-3 text-xs text-primary underline"
+                >
+                  I&apos;m a complete beginner — skip the quiz
+                </button>
+              </div>
+              <div className="space-y-4">
+                {PLACEMENT_QUIZ.map((q, qi) => (
+                  <div key={qi} className="rounded-xl bg-card p-4">
+                    <p className="text-sm font-semibold mb-2">{qi + 1}. {q.prompt}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {q.options.map((opt, oi) => (
+                        <button
+                          key={oi}
+                          onClick={() => {
+                            const next = [...quizAnswers];
+                            next[qi] = oi;
+                            setQuizAnswers(next);
+                          }}
+                          className={`rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
+                            quizAnswers[qi] === oi
+                              ? 'bg-primary text-white'
+                              : 'bg-background text-foreground'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={submitQuiz}
+                  className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white"
+                >
+                  See my level
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && quizSubmitted && level && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-success" />
+                </div>
+                <h1 className="text-2xl font-bold">You&apos;re at: {LEVEL_LABELS[level]}</h1>
+                <p className="text-sm text-muted mt-2">
+                  {quizCorrect}/{PLACEMENT_QUIZ.length} correct.
+                  We&apos;ll start your curriculum here.
+                </p>
               </div>
               <div className="space-y-2">
-                {LEVELS.map((l) => (
-                  <button
-                    key={l.value}
-                    onClick={() => setLevel(l.value)}
-                    className={`w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-colors ${
-                      level === l.value ? 'bg-primary text-white' : 'bg-card text-foreground'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">{l.label}</p>
-                      <p className={`text-xs ${level === l.value ? 'text-white/70' : 'text-muted'}`}>{l.desc}</p>
-                    </div>
-                  </button>
-                ))}
+                <p className="text-xs text-muted text-center">Want to adjust manually?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(LEVEL_LABELS) as StartingLevel[]).map((lv) => (
+                    <button
+                      key={lv}
+                      onClick={() => setLevel(lv)}
+                      className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                        level === lv ? 'bg-primary text-white' : 'bg-card text-foreground'
+                      }`}
+                    >
+                      {LEVEL_LABELS[lv]}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}

@@ -49,12 +49,27 @@ export interface StudySession {
   decks: string[];
 }
 
+export interface UnitProgress {
+  unitId: string;
+  status: 'locked' | 'available' | 'in_progress' | 'completed';
+  completedActivities: string[];   // activity ids done at least once
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface DailyTaskState {
+  date: string;          // YYYY-MM-DD
+  completedTaskIds: string[];
+}
+
 type MandarinDB = Dexie & {
   dictEntries: EntityTable<DictEntry, 'id'>;
   srsCards: EntityTable<SrsCard, 'id'>;
   savedWords: EntityTable<SavedWord, 'wordId'>;
   searchHistory: EntityTable<SearchHistoryEntry, 'query'>;
   studySessions: EntityTable<StudySession, 'id'>;
+  unitProgress: EntityTable<UnitProgress, 'unitId'>;
+  dailyTaskState: EntityTable<DailyTaskState, 'date'>;
 };
 
 const db = new Dexie('mandarinHeroDB') as MandarinDB;
@@ -65,6 +80,16 @@ db.version(1).stores({
   savedWords:     'wordId, savedAt',
   searchHistory:  'query, searchedAt',
   studySessions:  '++id, date',
+});
+
+db.version(2).stores({
+  dictEntries:    'id, simplified, pinyinNorm, level, source',
+  srsCards:       'id, deckId, due, queue, wordId',
+  savedWords:     'wordId, savedAt',
+  searchHistory:  'query, searchedAt',
+  studySessions:  '++id, date',
+  unitProgress:   'unitId, status',
+  dailyTaskState: 'date',
 });
 
 export { db };
