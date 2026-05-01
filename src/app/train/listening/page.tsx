@@ -17,8 +17,41 @@ const LEVEL_META: Record<Level, { label: string; color: string; desc: string }> 
 
 const DRILL_LENGTH = 10;
 
-function normChinese(s: string): string {
-  return s.replace(/[，。？！、：；""''「」【】\s]/g, '').toLowerCase();
+// Lenient English comparison: strip punctuation, lowercase, tokenize,
+// drop stopwords, and accept ≥60% content-word overlap with the expected
+// translation. So "I want rice" is accepted for "I want to eat rice."
+const STOPWORDS = new Set([
+  'a','an','the','to','is','are','am','be','been','being','do','does','did',
+  'was','were','in','on','at','of','for','with','and','or','but','i','you',
+  'he','she','it','we','they','me','him','her','us','them','my','your','his',
+  'our','their','this','that','these','those','will','would','can','could',
+  'shall','should','may','might','some','any',
+]);
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')      // strip accents
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+}
+
+function contentTokens(s: string): string[] {
+  return tokenize(s).filter((t) => !STOPWORDS.has(t));
+}
+
+function isLenientEnglishMatch(user: string, expected: string): boolean {
+  const userAll = tokenize(user).join(' ');
+  const expAll = tokenize(expected).join(' ');
+  if (!userAll) return false;
+  if (userAll === expAll) return true;
+  const exp = contentTokens(expected);
+  if (exp.length === 0) return userAll === expAll;
+  const userSet = new Set(tokenize(user));
+  const matched = exp.filter((t) => userSet.has(t)).length;
+  return matched / exp.length >= 0.6;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -46,7 +79,7 @@ function SetupScreen({ onStart }: { onStart: (level: Level) => void }) {
           <Volume2 className="h-8 w-8 text-teal-500" />
         </div>
         <h2 className="text-xl font-bold">Listening Drills</h2>
-        <p className="text-sm text-muted mt-1">Hear a sentence — type it in Chinese</p>
+        <p className="text-sm text-muted mt-1">Hear Chinese — type the English meaning</p>
       </div>
 
       <div className="space-y-2">
@@ -69,9 +102,9 @@ function SetupScreen({ onStart }: { onStart: (level: Level) => void }) {
 
       <div className="rounded-xl bg-card p-4 text-xs text-muted space-y-1">
         <p className="font-semibold text-foreground">How it works</p>
-        <p>1. Tap the speaker to hear the sentence</p>
-        <p>2. Type the Chinese characters you heard</p>
-        <p>3. Tap Check — or replay as many times as you need</p>
+        <p>1. Tap the speaker to hear the Chinese sentence</p>
+        <p>2. Type roughly what it means in English</p>
+        <p>3. Spelling and punctuation don&apos;t need to be perfect</p>
       </div>
 
       <button
@@ -171,9 +204,11 @@ function DrillScreen({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCheck()}
-            placeholder="Type what you heard in Chinese..."
-            className="font-chinese w-full rounded-xl bg-card px-4 py-4 text-lg text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+            placeholder="Type the English meaning..."
+            className="w-full rounded-xl bg-card px-4 py-4 text-base text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
             autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
           />
           <button
             onClick={handleCheck}
@@ -193,20 +228,20 @@ function DrillScreen({
                 : <XCircle className="h-5 w-5 text-red-400" />
               }
               <span className={`font-semibold text-sm ${isCorrect ? 'text-success' : 'text-red-400'}`}>
-                {isCorrect ? 'Correct!' : 'Not quite'}
+                {isCorrect ? 'Got it!' : 'Not quite'}
               </span>
             </div>
             {!isCorrect && (
               <div className="mb-2">
                 <p className="text-xs text-muted mb-0.5">You wrote:</p>
-                <p className="font-chinese text-base line-through opacity-60">{input}</p>
+                <p className="text-base line-through opacity-60">{input}</p>
               </div>
             )}
             <div>
-              <p className="text-xs text-muted mb-0.5">Correct answer:</p>
+              <p className="text-xs text-muted mb-0.5">The sentence was:</p>
               <p className="font-chinese text-xl font-bold">{sentence.chinese}</p>
               <p className="text-sm text-muted mt-0.5">{sentence.pinyin}</p>
-              <p className="text-sm mt-0.5">{sentence.english}</p>
+              <p className="text-sm font-medium mt-1">{sentence.english}</p>
             </div>
           </div>
 
@@ -267,6 +302,7 @@ function ResultScreen({
             <div className="flex-1 min-w-0">
               <p className="font-chinese text-sm font-semibold">{r.sentence.chinese}</p>
               <p className="text-xs text-muted">{r.sentence.pinyin}</p>
+              <p className="text-xs mt-0.5">{r.sentence.english}</p>
               {!r.correct && r.userAnswer && (
                 <p className="text-xs text-red-400 mt-0.5">You wrote: {r.userAnswer}</p>
               )}
@@ -315,7 +351,7 @@ export default function ListeningPage() {
 
   const handleSubmit = (answer: string): boolean => {
     const sentence = queue[qIndex];
-    const correct = normChinese(answer) === normChinese(sentence.chinese);
+    const correct = isLenientEnglishMatch(answer, sentence.english);
     setResults((prev) => [...prev, { sentence, userAnswer: answer, correct }]);
     return correct;
   };
@@ -336,7 +372,7 @@ export default function ListeningPage() {
         </button>
         <div>
           <h1 className="text-lg font-bold">Listening Drills</h1>
-          <p className="text-xs text-muted">Hear it, type it</p>
+          <p className="text-xs text-muted">Hear Chinese · type English</p>
         </div>
       </div>
 
