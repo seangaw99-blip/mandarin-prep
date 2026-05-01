@@ -14,24 +14,34 @@ import { hsk2Words } from '@/data/hsk/hsk2';
 import { hsk3Words } from '@/data/hsk/hsk3';
 import type { SrsCard, DictEntry } from '@/lib/db';
 
-// Seed HSK cards into Dexie on first visit
+// Seed HSK cards into Dexie. Idempotent — adds zh2en and en2zh per word,
+// skipping any that already exist (so older users get en2zh backfilled).
 async function seedDeck(deckId: string, wordIds: string[]) {
-  const existing = await db.srsCards.where('deckId').equals(deckId).count();
-  if (existing > 0) return;
-  const cards = wordIds.map((wordId) => ({
-    id: `${deckId}:${wordId}:zh2en`,
-    deckId,
-    wordId,
-    cardType: 'zh2en' as const,
-    due: Date.now(),
-    interval: 0,
-    easeFactor: 2.5,
-    repetitions: 0,
-    lapses: 0,
-    queue: 'new' as const,
-    learningStep: 0,
-  }));
-  await db.srsCards.bulkPut(cards);
+  const existing = await db.srsCards
+    .where('deckId').equals(deckId)
+    .primaryKeys() as string[];
+  const have = new Set(existing);
+  const toAdd: import('@/lib/db').SrsCard[] = [];
+  for (const wordId of wordIds) {
+    for (const cardType of ['zh2en', 'en2zh'] as const) {
+      const id = `${deckId}:${wordId}:${cardType}`;
+      if (have.has(id)) continue;
+      toAdd.push({
+        id,
+        deckId,
+        wordId,
+        cardType,
+        due: Date.now(),
+        interval: 0,
+        easeFactor: 2.5,
+        repetitions: 0,
+        lapses: 0,
+        queue: 'new',
+        learningStep: 0,
+      });
+    }
+  }
+  if (toAdd.length > 0) await db.srsCards.bulkPut(toAdd);
 }
 
 interface SessionCard {
@@ -206,29 +216,50 @@ export default function StudyPage() {
         {current && (
           <>
             {/* Card */}
-            <div
-              onClick={() => { if (!revealed) { setRevealed(true); speakChinese(current.entry.simplified); } }}
-              className="rounded-2xl bg-card p-8 text-center min-h-48 flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
-            >
-              <span className="font-chinese text-6xl font-bold">{current.entry.simplified}</span>
-              {current.entry.level && (
-                <span className="mt-3 rounded px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
-                  HSK {current.entry.level}
-                </span>
-              )}
-              {!revealed && (
-                <p className="mt-6 text-sm text-muted">Tap to reveal</p>
-              )}
-              {revealed && (
-                <div className="mt-4 animate-fadeIn space-y-1">
-                  <p className="text-muted">{current.entry.pinyin}</p>
-                  <p className="text-xl font-semibold">{current.entry.english}</p>
-                  {current.entry.partOfSpeech && (
-                    <p className="text-xs text-muted">{current.entry.partOfSpeech}</p>
+            {(() => {
+              const isZh2En = current.srs.cardType === 'zh2en';
+              return (
+                <div
+                  onClick={() => { if (!revealed) { setRevealed(true); speakChinese(current.entry.simplified); } }}
+                  className="relative rounded-2xl bg-card p-8 text-center min-h-48 flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
+                >
+                  <span className="absolute top-3 left-4 text-[10px] uppercase tracking-wider text-muted font-semibold">
+                    {isZh2En ? '中 → EN' : 'EN → 中'}
+                  </span>
+                  {isZh2En ? (
+                    <span className="font-chinese text-6xl font-bold">{current.entry.simplified}</span>
+                  ) : (
+                    <span className="text-3xl font-semibold px-4">{current.entry.english}</span>
+                  )}
+                  {current.entry.level && (
+                    <span className="mt-3 rounded px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
+                      HSK {current.entry.level}
+                    </span>
+                  )}
+                  {!revealed && (
+                    <p className="mt-6 text-sm text-muted">Tap to reveal</p>
+                  )}
+                  {revealed && (
+                    <div className="mt-4 animate-fadeIn space-y-1">
+                      {isZh2En ? (
+                        <>
+                          <p className="text-muted">{current.entry.pinyin}</p>
+                          <p className="text-xl font-semibold">{current.entry.english}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-chinese text-5xl font-bold">{current.entry.simplified}</p>
+                          <p className="text-muted mt-2">{current.entry.pinyin}</p>
+                        </>
+                      )}
+                      {current.entry.partOfSpeech && (
+                        <p className="text-xs text-muted">{current.entry.partOfSpeech}</p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Audio button when revealed */}
             {revealed && (

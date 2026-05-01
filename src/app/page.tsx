@@ -19,53 +19,42 @@ import { hsk3Words } from '@/data/hsk/hsk3';
 import { getDailyTasks, getDayFocusLabel, markTaskDoneToday, type DailyTask } from '@/lib/curriculum';
 import type { Unit } from '@/data/curriculum';
 
-// Seed HSK decks if needed (idempotent)
+// Seed HSK decks if needed — idempotent. Adds both zh2en and en2zh cards
+// per word, and backfills en2zh for users seeded before en2zh existed.
 async function ensureDecksSeeded() {
-  const count = await db.srsCards.count();
-  if (count > 0) return;
   const DAY = 86_400_000;
-  const cards = [
-    ...hsk1Words.map((w) => ({
-      id: `hsk1:${w.id}:zh2en`,
-      deckId: 'hsk1',
-      wordId: w.id,
-      cardType: 'zh2en' as const,
-      due: Date.now(),
-      interval: 0,
-      easeFactor: 2.5,
-      repetitions: 0,
-      lapses: 0,
-      queue: 'new' as const,
-      learningStep: 0,
-    })),
-    ...hsk2Words.map((w) => ({
-      id: `hsk2:${w.id}:zh2en`,
-      deckId: 'hsk2',
-      wordId: w.id,
-      cardType: 'zh2en' as const,
-      due: Date.now() + DAY * 3,
-      interval: 0,
-      easeFactor: 2.5,
-      repetitions: 0,
-      lapses: 0,
-      queue: 'new' as const,
-      learningStep: 0,
-    })),
-    ...hsk3Words.map((w) => ({
-      id: `hsk3:${w.id}:zh2en`,
-      deckId: 'hsk3',
-      wordId: w.id,
-      cardType: 'zh2en' as const,
-      due: Date.now() + DAY * 14,
-      interval: 0,
-      easeFactor: 2.5,
-      repetitions: 0,
-      lapses: 0,
-      queue: 'new' as const,
-      learningStep: 0,
-    })),
+  const decks: { deckId: string; words: { id: string }[]; offsetDays: number }[] = [
+    { deckId: 'hsk1', words: hsk1Words, offsetDays: 0 },
+    { deckId: 'hsk2', words: hsk2Words, offsetDays: 3 },
+    { deckId: 'hsk3', words: hsk3Words, offsetDays: 14 },
   ];
-  await db.srsCards.bulkPut(cards);
+
+  const existingIds = new Set((await db.srsCards.toCollection().primaryKeys()) as string[]);
+  const toAdd: import('@/lib/db').SrsCard[] = [];
+
+  for (const deck of decks) {
+    const due = Date.now() + DAY * deck.offsetDays;
+    for (const w of deck.words) {
+      for (const cardType of ['zh2en', 'en2zh'] as const) {
+        const id = `${deck.deckId}:${w.id}:${cardType}`;
+        if (existingIds.has(id)) continue;
+        toAdd.push({
+          id,
+          deckId: deck.deckId,
+          wordId: w.id,
+          cardType,
+          due,
+          interval: 0,
+          easeFactor: 2.5,
+          repetitions: 0,
+          lapses: 0,
+          queue: 'new',
+          learningStep: 0,
+        });
+      }
+    }
+  }
+  if (toAdd.length > 0) await db.srsCards.bulkPut(toAdd);
 }
 
 interface DashboardStats {
