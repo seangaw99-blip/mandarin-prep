@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, XCircle, RotateCcw, ArrowRight, Volume2 } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { db } from '@/lib/db';
@@ -50,7 +50,24 @@ interface SessionCard {
 }
 
 export default function StudyPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen">
+        <Header title="Study" />
+        <div className="flex items-center justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      </div>
+    }>
+      <StudySession />
+    </Suspense>
+  );
+}
+
+function StudySession() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get('mode'); // 'en2zh' | 'zh2en' | null
   const [loading, setLoading] = useState(true);
   const [queue, setQueue] = useState<SessionCard[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -67,18 +84,21 @@ export default function StudyPage() {
     await seedDeck('hsk3', hsk3Words.map((w) => w.id));
 
     const now = Date.now();
-    const due = await db.srsCards
+    const matchesMode = (c: SrsCard) => !mode || c.cardType === mode;
+
+    let due = await db.srsCards
       .where('due').belowOrEqual(now)
+      .filter(matchesMode)
       .limit(30)
       .toArray();
 
     // Also grab some new cards if due count is low
     if (due.length < 10) {
       const newCards = await db.srsCards
-        .filter((c) => c.queue === 'new' && c.repetitions === 0 && c.due > now)
+        .filter((c) => c.queue === 'new' && c.repetitions === 0 && c.due > now && matchesMode(c))
         .limit(10 - due.length)
         .toArray();
-      due.push(...newCards);
+      due = due.concat(newCards);
     }
 
     const cards: SessionCard[] = [];
@@ -104,7 +124,7 @@ export default function StudyPage() {
     setRevealed(false);
     setDone(cards.length === 0);
     setLoading(false);
-  }, []);
+  }, [mode]);
 
   useEffect(() => { loadSession(); }, [loadSession]);
 

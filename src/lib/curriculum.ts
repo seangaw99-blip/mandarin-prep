@@ -152,7 +152,7 @@ export async function getDailyTasks(): Promise<{ unit: Unit; tasks: DailyTask[] 
       id: `vocab:${unit.id}`,
       type: VOCAB_TASK_TYPE,
       label: `Review ${unit.title} vocabulary`,
-      href: '/study',
+      href: '/study?mode=en2zh',
       estMinutes: 8,
       done: state.completedTaskIds.includes(`vocab:${unit.id}`),
     });
