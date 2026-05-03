@@ -242,7 +242,7 @@ export default function HomePage() {
                   : 0}%` }}
               />
             </div>
-            <Link href="/study">
+            <Link href="/study?mode=en2zh">
               <button className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white flex items-center justify-center gap-2">
                 <GraduationCap className="h-5 w-5" />
                 Start Flashcards
