@@ -39,19 +39,26 @@ function PlayInner() {
   const [revealed, setRevealed] = useState(false);
   const [knownIds, setKnownIds] = useState<Set<string>>(new Set());
   const [unknownIds, setUnknownIds] = useState<Set<string>>(new Set());
+  const [imageLoaded, setImageLoaded] = useState(false);
   const playedRef = useRef<string | null>(null);
 
   const card = deck[index];
   const total = deck.length;
 
   useEffect(() => {
+    setImageLoaded(false);
+  }, [card?.id]);
+
+  useEffect(() => {
     if (!card) return;
+    if (!imageLoaded) return;
     if (playedRef.current === card.id) return;
     playedRef.current = card.id;
-    // Auto-play slowed Chinese audio when a new card appears.
-    const t = setTimeout(() => speakChinese(card.simplified, 0.4), 350);
+    // Wait until the image has actually painted, then play slowed audio
+    // so the user sees and hears the card simultaneously.
+    const t = setTimeout(() => speakChinese(card.simplified, 0.4), 120);
     return () => clearTimeout(t);
-  }, [card]);
+  }, [card, imageLoaded]);
 
   if (total === 0) {
     return (
@@ -151,12 +158,16 @@ function PlayInner() {
               fill
               priority
               sizes="(max-width: 512px) 100vw, 512px"
-              className="object-cover"
+              className={`object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setImageLoaded(true)}
               onError={(e) => {
-                // If image is missing (not yet generated), substitute a placeholder UI.
                 (e.currentTarget as HTMLImageElement).style.opacity = '0';
+                setImageLoaded(true);
               }}
             />
+            {!imageLoaded && (
+              <div className="absolute inset-0 bg-background animate-pulse" />
+            )}
             {!revealed && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 backdrop-blur px-4 py-1.5 text-xs font-medium text-white">
                 Tap image to reveal
