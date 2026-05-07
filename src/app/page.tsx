@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Flame, Zap, GraduationCap, BookOpen, MessageCircle,
   ChevronRight, Dumbbell, BookMarked, ArrowRight, Map, CheckCircle2, Circle,
-  Headphones, Mic, Music,
+  Headphones, Mic, Music, Image as ImageIcon,
 } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { getUserProfile, getGreeting, type UserProfile } from '@/lib/user-profile';
@@ -69,7 +69,8 @@ const QUICK_ACTIONS = [
   { href: '/lessons', icon: Map, label: 'Lessons', color: 'bg-primary' },
   { href: '/dictionary', icon: BookOpen, label: 'Dictionary', color: 'bg-blue-500' },
   { href: '/train', icon: Dumbbell, label: 'Training', color: 'bg-purple-500' },
-  { href: '/chat', icon: MessageCircle, label: 'Practice', color: 'bg-emerald-500' },
+  { href: '/picture-cards', icon: ImageIcon, label: 'Picture Cards', color: 'bg-emerald-500' },
+  { href: '/chat', icon: MessageCircle, label: 'Practice', color: 'bg-amber-500' },
   { href: '/grammar', icon: BookMarked, label: 'Grammar', color: 'bg-orange-500' },
   { href: '/more', icon: ArrowRight, label: 'More', color: 'bg-muted' },
 ];

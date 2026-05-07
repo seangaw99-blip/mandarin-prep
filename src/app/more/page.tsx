@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   FileText, MessageSquare, Moon, Sun, Info, BookText,
   UserCog, Briefcase, BookOpen, Layers, Dumbbell, BookMarked,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { useTheme } from '@/components/theme-provider';
@@ -22,6 +23,7 @@ const sections = [
     label: 'Learning Tools',
     items: [
       { href: '/flashcards', icon: Layers, color: 'text-amber-500', title: 'Flashcards', desc: 'Classic card review mode' },
+      { href: '/picture-cards', icon: ImageIcon, color: 'text-emerald-500', title: 'Picture Cards', desc: 'Hear it, see it, then reveal hanzi' },
       { href: '/read', icon: BookMarked, color: 'text-teal-500', title: 'Graded Reading', desc: 'Short stories at HSK 1–3 level' },
       { href: '/phrases', icon: BookOpen, color: 'text-blue-500', title: 'Phrases by Scenario', desc: 'Airport, restaurant, hotel, and more' },
       { href: '/practice', icon: MessageSquare, color: 'text-rose-500', title: 'Dialogue Practice', desc: 'Role-play scripted conversations' },
