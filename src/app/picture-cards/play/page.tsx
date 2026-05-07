@@ -39,15 +39,12 @@ function PlayInner() {
   const [revealed, setRevealed] = useState(false);
   const [knownIds, setKnownIds] = useState<Set<string>>(new Set());
   const [unknownIds, setUnknownIds] = useState<Set<string>>(new Set());
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
   const playedRef = useRef<string | null>(null);
 
   const card = deck[index];
   const total = deck.length;
-
-  useEffect(() => {
-    setImageLoaded(false);
-  }, [card?.id]);
+  const imageLoaded = card != null && loadedId === card.id;
 
   useEffect(() => {
     if (!card) return;
@@ -159,10 +156,10 @@ function PlayInner() {
               priority
               sizes="(max-width: 512px) 100vw, 512px"
               className={`object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-              onLoad={() => setImageLoaded(true)}
+              onLoad={() => setLoadedId(card.id)}
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.opacity = '0';
-                setImageLoaded(true);
+                setLoadedId(card.id);
               }}
             />
             {!imageLoaded && (
