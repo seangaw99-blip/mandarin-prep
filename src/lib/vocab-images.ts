@@ -2,6 +2,7 @@ import type { HskWord } from '@/data/hsk/types';
 import { hsk1Words } from '@/data/hsk/hsk1';
 import { hsk2Words } from '@/data/hsk/hsk2';
 import { hsk3Words } from '@/data/hsk/hsk3';
+import { VOCAB_IMAGE_IDS } from '@/data/vocab-image-manifest';
 
 export type Theme =
   | 'people'
@@ -112,6 +113,7 @@ export function getImageableWords(): ImageableWord[] {
   for (const { word, level } of all) {
     const theme = classify(word);
     if (!theme) continue;
+    if (!VOCAB_IMAGE_IDS.has(word.id)) continue;
     out.push({
       id: word.id,
       hskLevel: level,
